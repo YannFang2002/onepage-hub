@@ -132,8 +132,9 @@ void SettingsActivity::onExit() {
 }
 
 void SettingsActivity::loop() {
-  // Left/Right always walk the category row ("Display", "Reader", ...), even
-  // while a sub-option is focused, so the categories never become unreachable.
+  // Left/Right (front keys) ALWAYS walk the category row ("Display", "Reader",
+  // ...), even while a sub-option is focused, so the categories never become
+  // unreachable.
   buttonNavigator.onPress({MappedInputManager::Button::Left}, [this] {
     selectCategory(selectedCategoryIndex - 1);
     requestUpdate();
@@ -169,9 +170,13 @@ void SettingsActivity::loop() {
     return;
   }
 
-  // Up/Down move inside the sub-option list.
-  buttonNavigator.onNextRelease([this] { moveWithinList(1); });
-  buttonNavigator.onPreviousRelease([this] { moveWithinList(-1); });
+  // Up/Down (side keys) move inside the sub-option list. Use the raw side
+  // buttons, NOT ButtonNavigator::onNextRelease/onPreviousRelease: those use
+  // Button::NavNext/NavPrevious, which also resolve to the front Right/Left
+  // keys (see MappedInputManager::mapButton). That made a single Left/Right
+  // press move the category tab AND the highlighted list row at once.
+  buttonNavigator.onRelease({MappedInputManager::Button::Down}, [this] { moveWithinList(1); });
+  buttonNavigator.onRelease({MappedInputManager::Button::Up}, [this] { moveWithinList(-1); });
 }
 
 void SettingsActivity::selectCategory(int categoryIndex) {
@@ -457,7 +462,9 @@ void SettingsActivity::render(RenderLock&&) {
         focused.type == SettingType::ACTION || focused.nameId == StrId::STR_TIME_TO_SLEEP;
   }
   const auto confirmLabel = (onCategoryRow || confirmOpensSubScreen) ? tr(STR_SELECT) : tr(STR_TOGGLE);
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  // Front Left/Right switch categories, so label them as directions. Up/Down on
+  // the side keys have no slot in this 4-button hint row.
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   // Always use standard refresh for settings screen

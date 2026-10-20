@@ -50,17 +50,20 @@ void DesktopActivity::loop() {
     return;
   }
 
-  // Side buttons move by row, front buttons move by column.
+  // Front buttons move by column, side buttons move by row. Use the raw side
+  // keys, NOT Button::NavNext/NavPrevious: those also resolve to the front
+  // Right/Left keys (MappedInputManager::mapButton), so a single Left/Right
+  // press would move one column AND one row at once.
   if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
     moveSelection(1);
   }
   if (mappedInput.wasPressed(MappedInputManager::Button::Left)) {
     moveSelection(-1);
   }
-  if (mappedInput.wasPressed(MappedInputManager::Button::NavNext)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Down)) {
     moveSelection(kColumns);
   }
-  if (mappedInput.wasPressed(MappedInputManager::Button::NavPrevious)) {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
     moveSelection(-kColumns);
   }
 
