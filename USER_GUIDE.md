@@ -175,6 +175,8 @@ The Settings screen allows you to configure the device's behavior. There are a f
   - "None" - A blank screen
   - "Cover + Custom" - The book cover image while actively reading, falls back to "Custom" behavior otherwise
 
+- **Sleep Image**: When **Custom** or **Cover + Custom** is selected, choose one fixed PNG or BMP image from the `/sleep` folder.
+
 - **Sleep Screen Cover Mode**: How to display the book cover when "Cover" sleep screen is selected:
   
   - "Fit" (default) - Scale the image down to fit centered on the screen, padding with white borders as necessary
@@ -484,20 +486,21 @@ When using **Cover** or **Cover + Custom**, two additional settings apply:
 
 #### Custom images
 
-To use custom sleep images, set the sleep screen mode to **Custom** or **Cover + Custom**, then place images on the SD card:
+To use custom sleep images, set the sleep screen mode to **Custom** or **Cover + Custom**, create a `sleep` directory in the SD card root, and place PNG or BMP images inside. Then open **Display > Sleep Image** and select the image to display.
 
-- **Multiple Images (recommended):** Create a `.sleep` directory in the root of the SD card and place any number of `.bmp` images inside. One will be randomly selected each time the device sleeps. (A directory named `sleep` is also accepted as a fallback.)
-- **Single Image:** Place a file named `sleep.bmp` in the root directory. This is used as a fallback if no valid images are found in the `.sleep`/`sleep` directory.
+- Images are converted to the device resolution and cached on the SD card.
+- If no image is selected, the first image in filename order is used.
+- The legacy root-level `sleep.bmp` remains supported as a fallback.
 
 > [!TIP]
 > For best results:
 > 
-> - Use uncompressed BMP files with 24-bit color depth
-> - X4: Use a resolution of 480x800 pixels to match the device's screen resolution.
-> - X3: Use a resolution of 528x792 pixels to match the device's screen resolution.
+> - PNG and BMP are supported. PNG files are scaled and cached automatically.
+> - Use the screen aspect ratio, for example 480x800 pixels on OnePage; larger images such as 1632x2720 are also supported.
+> - When using BMP directly, use 24-bit color depth for best results.
 
 > [!TIP]
-> You can set an image as the sleep screen cover directly from the BMP image viewer in the **[Browse Files](#33-browse-files-screen)** screen.
+> You can select an image as the sleep screen directly from the BMP image viewer in the **[Browse Files](#33-browse-files-screen)** screen.
 
 ---
 

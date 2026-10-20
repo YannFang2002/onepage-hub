@@ -4,8 +4,11 @@
 #include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
+#include <PngToBmpConverter.h>
 #include <I18n.h>
 #include <Txt.h>
+#include <cstdint>
+#include <string>
 #include <Xtc.h>
 
 #include "CrossPointSettings.h"
@@ -56,39 +59,19 @@ void SleepActivity::onEnter() {
 }
 
 void SleepActivity::renderCustomSleepScreen() const {
-  // Check if we have a /.sleep (preferred) or /sleep directory
-  const char* sleepDir = nullptr;
-  auto dir = Storage.open("/.sleep");
+  if (SETTINGS.sleepScreenImage[0] != '\0' && renderSleepImageFile(SETTINGS.sleepScreenImage)) {
+    return;
+  }
 
-  // Look for sleep.bmp on the root of the sd card to determine if we should
-  // render a custom sleep screen instead of the default.
-  // This takes priority over the /sleep folder.
-  HalFile file;
-  if (Storage.openFileForRead("SLP", "/sleep.bmp", file)) {
-    Bitmap bitmap(file, true);
-    if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-      LOG_DBG("SLP", "Loading: /sleep.bmp");
-      renderBitmapSleepScreen(bitmap);
-      file.close();
+  for (const char* sleepDir : {"/sleep", "/.sleep"}) {
+    auto dir = Storage.open(sleepDir);
+    if (!dir || !dir.isDirectory()) {
       if (dir) dir.close();
-      return;
+      continue;
     }
-    file.close();
-  }
 
-  if (dir && dir.isDirectory()) {
-    sleepDir = "/.sleep";
-  } else {
-    dir = Storage.open("/sleep");
-    if (dir && dir.isDirectory()) {
-      sleepDir = "/sleep";
-    }
-  }
-
-  if (sleepDir) {
     std::vector<std::string> files;
     char name[500];
-    // collect all valid BMP files
     for (auto dirFile = dir.openNextFile(); dirFile; dirFile = dir.openNextFile()) {
       if (dirFile.isDirectory()) {
         dirFile.close();
@@ -101,52 +84,97 @@ void SleepActivity::renderCustomSleepScreen() const {
         continue;
       }
 
-      if (!FsHelpers::hasBmpExtension(filename)) {
-        LOG_DBG("SLP", "Skipping non-.bmp file name: %s", name);
-        dirFile.close();
-        continue;
-      }
-      Bitmap bitmap(dirFile);
-      if (bitmap.parseHeaders() != BmpReaderError::Ok) {
-        LOG_DBG("SLP", "Skipping invalid BMP file: %s", name);
+      if (!FsHelpers::hasBmpExtension(filename) && !FsHelpers::hasPngExtension(filename)) {
         dirFile.close();
         continue;
       }
       files.emplace_back(filename);
       dirFile.close();
     }
-    const auto numFiles = files.size();
-    if (numFiles > 0) {
-      // Pick a random wallpaper, excluding recently shown ones.
-      // Window: up to SLEEP_RECENT_COUNT entries, capped at numFiles-1.
-      const uint16_t fileCount = static_cast<uint16_t>(std::min(numFiles, static_cast<size_t>(UINT16_MAX)));
-      const uint8_t window =
-          static_cast<uint8_t>(std::min(static_cast<size_t>(APP_STATE.recentSleepFill), numFiles - 1));
-      auto randomFileIndex = static_cast<uint16_t>(random(fileCount));
-      for (uint8_t attempt = 0; attempt < 20 && APP_STATE.isRecentSleep(randomFileIndex, window); attempt++) {
-        randomFileIndex = static_cast<uint16_t>(random(fileCount));
-      }
-      APP_STATE.pushRecentSleep(randomFileIndex);
-      APP_STATE.saveToFile();
-      const auto filename = std::string(sleepDir) + "/" + files[randomFileIndex];
-      HalFile randFile;
-      if (Storage.openFileForRead("SLP", filename, randFile)) {
-        LOG_DBG("SLP", "Randomly loading: %s/%s", sleepDir, files[randomFileIndex].c_str());
-        delay(100);
-        Bitmap bitmap(randFile, true);
-        if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-          renderBitmapSleepScreen(bitmap);
-          randFile.close();
-          dir.close();
-          return;
-        }
-        randFile.close();
+    dir.close();
+
+    FsHelpers::sortFileList(files);
+    for (const auto& filename : files) {
+      const auto path = std::string(sleepDir) + "/" + filename;
+      if (renderSleepImageFile(path)) {
+        return;
       }
     }
   }
-  if (dir) dir.close();
+
+  // Legacy root-level custom sleep image.
+  if (renderSleepImageFile("/sleep.bmp")) {
+    return;
+  }
 
   renderDefaultSleepScreen();
+}
+
+bool SleepActivity::renderSleepImageFile(const std::string& path) const {
+  HalFile file;
+  if (!Storage.openFileForRead("SLP", path, file)) {
+    return false;
+  }
+
+  if (FsHelpers::hasBmpExtension(path)) {
+    Bitmap bitmap(file, true);
+    if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+      LOG_DBG("SLP", "Loading custom sleep image: %s", path.c_str());
+      renderBitmapSleepScreen(bitmap);
+      file.close();
+      return true;
+    }
+    file.close();
+    return false;
+  }
+
+  if (!FsHelpers::hasPngExtension(path)) {
+    file.close();
+    return false;
+  }
+
+  const size_t fileSize = file.fileSize64();
+  file.close();
+
+  uint32_t pathHash = 2166136261u;
+  for (const unsigned char c : path) {
+    pathHash ^= c;
+    pathHash *= 16777619u;
+  }
+  const auto cachePath = std::string("/.crosspoint/sleep_") + std::to_string(pathHash) + "_" +
+                         std::to_string(fileSize) + ".bmp";
+
+  if (!Storage.exists(cachePath.c_str())) {
+    Storage.mkdir("/.crosspoint");
+    HalFile source;
+    HalFile target;
+    bool converted = Storage.openFileForRead("SLP", path, source) &&
+                     Storage.openFileForWrite("SLP", cachePath, target);
+    if (converted) {
+      converted = PngToBmpConverter::pngFileToBmpStream(source, target, true);
+    }
+    source.close();
+    target.close();
+    if (!converted) {
+      Storage.remove(cachePath.c_str());
+      LOG_ERR("SLP", "Failed to convert sleep image PNG: %s", path.c_str());
+      return false;
+    }
+  }
+
+  if (Storage.openFileForRead("SLP", cachePath, file)) {
+    Bitmap bitmap(file, true);
+    if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+      LOG_DBG("SLP", "Loading converted sleep image: %s", cachePath.c_str());
+      renderBitmapSleepScreen(bitmap);
+      file.close();
+      return true;
+    }
+    file.close();
+    Storage.remove(cachePath.c_str());
+  }
+
+  return false;
 }
 
 void SleepActivity::renderDefaultSleepScreen() const {

@@ -24,6 +24,7 @@
 #include "SdCardFontSystem.h"
 #include "SdFirmwareUpdateActivity.h"
 #include "SettingsList.h"
+#include "SleepImageSelectActivity.h"
 #include "StatusBarSettingsActivity.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/IntervalSelectionActivity.h"
@@ -57,6 +58,17 @@ void SettingsActivity::rebuildSettingsLists() {
       controlsSettings.push_back(setting);
     } else if (setting.category == StrId::STR_CAT_SYSTEM) {
       systemSettings.push_back(setting);
+    }
+  }
+
+  if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM ||
+      SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::COVER_CUSTOM) {
+    for (size_t i = 0; i < displaySettings.size(); i++) {
+      if (displaySettings[i].valuePtr == &CrossPointSettings::sleepScreen) {
+        displaySettings.insert(displaySettings.begin() + i + 1,
+                               SettingInfo::Action(StrId::STR_SLEEP_IMAGE, SettingAction::SleepImage));
+        break;
+      }
     }
   }
 
@@ -294,6 +306,13 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::Language:
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput), resultHandler);
         break;
+      case SettingAction::SleepImage:
+        startActivityForResult(std::make_unique<SleepImageSelectActivity>(renderer, mappedInput),
+                               [this](const ActivityResult&) {
+                                 SETTINGS.saveToFile();
+                                 rebuildSettingsLists();
+                               });
+        break;
       case SettingAction::None:
         // Do nothing
         break;
@@ -377,6 +396,11 @@ void SettingsActivity::render(RenderLock&&) {
       [&settings](int index) { return std::string(I18N.get(settings[index].nameId)); }, nullptr, nullptr,
       [&settings](int i) {
         const auto& setting = settings[i];
+        if (setting.type == SettingType::ACTION && setting.action == SettingAction::SleepImage) {
+          const char* path = SETTINGS.sleepScreenImage;
+          const char* slash = strrchr(path, '/');
+          return std::string(slash ? slash + 1 : path);
+        }
         std::string valueText = "";
         if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
           const bool value = SETTINGS.*(setting.valuePtr);
@@ -413,7 +437,9 @@ void SettingsActivity::render(RenderLock&&) {
   const auto confirmLabel =
       (selectedSettingIndex == 0)
           ? I18N.get(categoryNames[(selectedCategoryIndex + 1) % categoryCount])
-          : (selectedSettingIndex > 0 && (*currentSettings)[selectedSettingIndex - 1].nameId == StrId::STR_TIME_TO_SLEEP
+          : (selectedSettingIndex > 0 &&
+                     ((*currentSettings)[selectedSettingIndex - 1].type == SettingType::ACTION ||
+                      (*currentSettings)[selectedSettingIndex - 1].nameId == StrId::STR_TIME_TO_SLEEP)
                  ? tr(STR_SELECT)
                  : tr(STR_TOGGLE));
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));

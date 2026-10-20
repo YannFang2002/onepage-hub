@@ -146,25 +146,13 @@ void BmpViewerActivity::onExit() {
 void BmpViewerActivity::doSetSleepCover() {
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
 
-  bool success = false;
-  HalFile inFile, outFile;
-  if (Storage.openFileForRead("BMP", filePath, inFile)) {
-    if (Storage.openFileForWrite("BMP", "/sleep.bmp", outFile)) {
-      char buffer[2048];
-      int bytesRead;
-      success = true;
-      while ((bytesRead = inFile.read(buffer, sizeof(buffer))) > 0) {
-        if (outFile.write(buffer, bytesRead) != bytesRead) {
-          success = false;
-          break;
-        }
-      }
-      outFile.close();
-    }
-    inFile.close();
-  }
+  HalFile file;
+  const bool success = Storage.openFileForRead("BMP", filePath, file);
+  if (file) file.close();
 
   if (success) {
+    strncpy(SETTINGS.sleepScreenImage, filePath.c_str(), sizeof(SETTINGS.sleepScreenImage) - 1);
+    SETTINGS.sleepScreenImage[sizeof(SETTINGS.sleepScreenImage) - 1] = '\0';
     SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
     SETTINGS.saveToFile();
     GUI.drawPopup(renderer, tr(STR_DONE));
