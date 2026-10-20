@@ -1,8 +1,8 @@
-# CrossPoint User Guide
+# OnePage Hub User Guide
 
-Welcome to the **CrossPoint** firmware. This guide outlines the hardware controls, navigation, and reading features of the device.
+Welcome to the **OnePage Hub** firmware. This guide outlines the hardware controls, navigation, and reading features of the device.
 
-- [CrossPoint User Guide](#crosspoint-user-guide)
+- [OnePage Hub User Guide](#onepage-hub-user-guide)
   - [1. Hardware Overview](#1-hardware-overview)
     - [Button Layout](#button-layout)
   - [2. Power \& Startup](#2-power--startup)
@@ -74,7 +74,7 @@ To reboot the device (for example after a firmware update or if it's frozen), pr
 Upon turning the device on for the first time, you will be placed on the **[Home](#31-home-screen)** screen.
 
 > [!NOTE]
-> On subsequent restarts, the firmware will automatically reopen the last book you were reading.
+> A cold boot always starts on the Home screen. Waking from sleep reopens the app you fell asleep in — the reader returns to the book you were reading, and Settings returns to Settings.
 
 ---
 
@@ -82,7 +82,17 @@ Upon turning the device on for the first time, you will be placed on the **[Home
 
 ### 3.1 Home Screen
 
-The Home screen is the main entry point to the firmware. From here you can navigate to **[Reading Mode](#4-reading-mode)** with the most recently read book, the **[Browse Files](#33-browse-files-screen)** screen, the **[Recent Books](#34-recent-books-screen)** screen, the **[File Transfer](#35-file-transfer-screen)** screen, or **[Settings](#36-settings)**.
+The Home screen is the launcher: a three-column grid with one tile per app.
+
+| App | What it opens |
+| --- | --- |
+| **Reader** | The library — continue reading the most recent book, **[Browse Files](#33-browse-files-screen)**, **[Recent Books](#34-recent-books-screen)**, and OPDS catalogues when configured. |
+| **Settings** | Device, reader, and network **[Settings](#36-settings)**. |
+| **File Transfer** | The **[File Transfer](#35-file-transfer-screen)** web server. |
+
+* **Move selection:** **Left/Right** move across a row, **Up/Down** move between rows.
+* **Open app:** **Confirm**.
+* **Back:** does nothing on the Home screen. Inside an app, **Back** returns to the Home screen — from a book it first returns to the library, then to the Home screen.
 
 ### 3.2 Reading Mode
 

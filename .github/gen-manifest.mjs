@@ -29,13 +29,13 @@ if (!version || !bin) {
   process.exit(1);
 }
 
-const REPO = 'MoveCall/crosspoint-onepage';
+const REPO = 'YannFang2002/onepage-hub';
 // Resolve to the .bin on THIS release. `latest/download/<bin>` also works, but
 // pinning the tag keeps a manifest reproducible if you ever inspect an old one.
 const binUrl = `https://github.com/${REPO}/releases/download/${version}/${bin}`;
 
 const manifest = {
-  name: 'OnePage',
+  name: 'OnePage Hub',
   version: version.replace(/^v/, ''),
   new_install_prompt_erase: false,
   builds: [

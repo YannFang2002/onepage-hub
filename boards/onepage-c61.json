@@ -18,7 +18,7 @@
     "arduino",
     "espidf"
   ],
-  "name": "OnePage (ESP32-C61HR2, 16 MB Flash, 2 MB PSRAM @40MHz)",
+  "name": "OnePage Hub (ESP32-C61HR2, 16 MB Flash, 2 MB PSRAM @40MHz)",
   "upload": {
     "flash_size": "16MB",
     "maximum_ram_size": 327680,
@@ -31,6 +31,6 @@
       "CONFIG_IDF_TARGET=\"esp32c61\""
     ]
   },
-  "url": "https://github.com/movecall",
-  "vendor": "OnePage"
+  "url": "https://github.com/YannFang2002",
+  "vendor": "OnePage Hub"
 }

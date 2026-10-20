@@ -132,24 +132,35 @@ void SettingsActivity::onExit() {
 }
 
 void SettingsActivity::loop() {
-  bool hasChangedCategory = false;
+  // Left/Right always walk the category row ("Display", "Reader", ...), even
+  // while a sub-option is focused, so the categories never become unreachable.
+  buttonNavigator.onPress({MappedInputManager::Button::Left}, [this] {
+    selectCategory(selectedCategoryIndex - 1);
+    requestUpdate();
+  });
 
-  // Handle actions with early return
+  buttonNavigator.onPress({MappedInputManager::Button::Right}, [this] {
+    selectCategory(selectedCategoryIndex + 1);
+    requestUpdate();
+  });
+
   if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
     if (selectedSettingIndex == 0) {
-      selectedCategoryIndex = (selectedCategoryIndex < categoryCount - 1) ? (selectedCategoryIndex + 1) : 0;
-      hasChangedCategory = true;
-      requestUpdate();
+      // On the category row: Confirm drops into the first sub-option.
+      if (settingsCount > 0) {
+        selectedSettingIndex = 1;
+        requestUpdate();
+      }
     } else {
       toggleCurrentSetting();
       requestUpdate();
-      return;
     }
+    return;
   }
 
   if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
     if (selectedSettingIndex > 0) {
-      selectedSettingIndex = 0;
+      selectedSettingIndex = 0;  // Back to the category row, not out of settings.
       requestUpdate();
     } else {
       SETTINGS.saveToFile();
@@ -158,47 +169,50 @@ void SettingsActivity::loop() {
     return;
   }
 
-  // Handle navigation
-  buttonNavigator.onNextRelease([this] {
-    selectedSettingIndex = ButtonNavigator::nextIndex(selectedSettingIndex, settingsCount + 1);
-    requestUpdate();
-  });
+  // Up/Down move inside the sub-option list.
+  buttonNavigator.onNextRelease([this] { moveWithinList(1); });
+  buttonNavigator.onPreviousRelease([this] { moveWithinList(-1); });
+}
 
-  buttonNavigator.onPreviousRelease([this] {
-    selectedSettingIndex = ButtonNavigator::previousIndex(selectedSettingIndex, settingsCount + 1);
-    requestUpdate();
-  });
-
-  buttonNavigator.onNextContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::nextIndex(selectedCategoryIndex, categoryCount);
-    requestUpdate();
-  });
-
-  buttonNavigator.onPreviousContinuous([this, &hasChangedCategory] {
-    hasChangedCategory = true;
-    selectedCategoryIndex = ButtonNavigator::previousIndex(selectedCategoryIndex, categoryCount);
-    requestUpdate();
-  });
-
-  if (hasChangedCategory) {
-    selectedSettingIndex = (selectedSettingIndex == 0) ? 0 : 1;
-    switch (selectedCategoryIndex) {
-      case 0:
-        currentSettings = &displaySettings;
-        break;
-      case 1:
-        currentSettings = &readerSettings;
-        break;
-      case 2:
-        currentSettings = &controlsSettings;
-        break;
-      case 3:
-        currentSettings = &systemSettings;
-        break;
-    }
-    settingsCount = static_cast<int>(currentSettings->size());
+void SettingsActivity::selectCategory(int categoryIndex) {
+  selectedCategoryIndex = ((categoryIndex % categoryCount) + categoryCount) % categoryCount;
+  switch (selectedCategoryIndex) {
+    case 0:
+      currentSettings = &displaySettings;
+      break;
+    case 1:
+      currentSettings = &readerSettings;
+      break;
+    case 2:
+      currentSettings = &controlsSettings;
+      break;
+    case 3:
+      currentSettings = &systemSettings;
+      break;
   }
+  settingsCount = static_cast<int>(currentSettings->size());
+  // Keep the same ordinal position in the new list, clamped to its length.
+  if (selectedSettingIndex > settingsCount) {
+    selectedSettingIndex = settingsCount;
+  }
+}
+
+void SettingsActivity::moveWithinList(int delta) {
+  if (settingsCount <= 0) {
+    return;
+  }
+  if (selectedSettingIndex == 0) {
+    // A direction press on the category row drops into the list.
+    selectedSettingIndex = delta > 0 ? 1 : settingsCount;
+  } else {
+    selectedSettingIndex += delta;
+    if (selectedSettingIndex > settingsCount) {
+      selectedSettingIndex = 1;
+    } else if (selectedSettingIndex < 1) {
+      selectedSettingIndex = settingsCount;
+    }
+  }
+  requestUpdate();
 }
 
 void SettingsActivity::toggleCurrentSetting() {
@@ -433,15 +447,16 @@ void SettingsActivity::render(RenderLock&&) {
       },
       true);
 
-  // Draw help text
-  const auto confirmLabel =
-      (selectedSettingIndex == 0)
-          ? I18N.get(categoryNames[(selectedCategoryIndex + 1) % categoryCount])
-          : (selectedSettingIndex > 0 &&
-                     ((*currentSettings)[selectedSettingIndex - 1].type == SettingType::ACTION ||
-                      (*currentSettings)[selectedSettingIndex - 1].nameId == StrId::STR_TIME_TO_SLEEP)
-                 ? tr(STR_SELECT)
-                 : tr(STR_TOGGLE));
+  // Draw help text: Confirm enters the sub-option list from the category row,
+  // opens the sub-screen, or toggles the focused value.
+  const bool onCategoryRow = selectedSettingIndex == 0;
+  bool confirmOpensSubScreen = false;
+  if (!onCategoryRow && selectedSettingIndex <= settingsCount) {
+    const auto& focused = (*currentSettings)[selectedSettingIndex - 1];
+    confirmOpensSubScreen =
+        focused.type == SettingType::ACTION || focused.nameId == StrId::STR_TIME_TO_SLEEP;
+  }
+  const auto confirmLabel = (onCategoryRow || confirmOpensSubScreen) ? tr(STR_SELECT) : tr(STR_TOGGLE);
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 

@@ -76,6 +76,7 @@ bool JsonSettingsIO::saveState(const CrossPointState& s, const char* path) {
   doc["recentSleepFill"] = s.recentSleepFill;
   doc["readerActivityLoadCount"] = s.readerActivityLoadCount;
   doc["lastSleepFromReader"] = s.lastSleepFromReader;
+  doc["lastApp"] = s.lastApp;
   doc["showBootScreen"] = s.showBootScreen;
 
   String json;
@@ -111,6 +112,9 @@ bool JsonSettingsIO::loadState(CrossPointState& s, const char* json) {
   }
   s.readerActivityLoadCount = doc["readerActivityLoadCount"] | static_cast<uint8_t>(0);
   s.lastSleepFromReader = doc["lastSleepFromReader"] | false;
+  // Missing on pre-launcher state files: 0xFF means "no app", so an upgraded
+  // device wakes on the desktop rather than guessing.
+  s.lastApp = doc["lastApp"] | static_cast<uint8_t>(0xFF);
   s.showBootScreen = doc["showBootScreen"] | true;
   return true;
 }

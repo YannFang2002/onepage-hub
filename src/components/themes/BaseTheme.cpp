@@ -700,6 +700,55 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
   }
 }
 
+void BaseTheme::drawAppGrid(GfxRenderer& renderer, Rect rect, int appCount, int selectedIndex, int columns,
+                            const std::function<std::string(int index)>& appLabel,
+                            const std::function<UIIcon(int index)>& appIcon) const {
+  if (appCount <= 0 || columns <= 0) {
+    return;
+  }
+
+  const int sidePadding = BaseMetrics::values.contentSidePadding;
+  const int gap = BaseMetrics::values.menuSpacing * 2;
+  const int tileWidth = (rect.width - sidePadding * 2 - gap * (columns - 1)) / columns;
+
+  constexpr int iconSize = 32;
+  constexpr int iconLabelGap = 12;
+  constexpr int verticalPadding = 16;
+  const int labelHeight = renderer.getLineHeight(UI_10_FONT_ID);
+  // The tile hugs its content (padding + icon + gap + label + padding). Sizing
+  // the tile from the width instead left ~3x the icon height between the icon
+  // and its label.
+  const int tileHeight = verticalPadding * 2 + iconSize + iconLabelGap + labelHeight;
+
+  // Center the block vertically so a single row of apps does not hug the header.
+  const int rows = (appCount + columns - 1) / columns;
+  const int blockHeight = rows * tileHeight + (rows - 1) * gap;
+  const int topOffset = rect.y + std::max(0, (rect.height - blockHeight) / 2);
+
+  for (int i = 0; i < appCount; ++i) {
+    const int row = i / columns;
+    const int col = i % columns;
+    const int tileX = rect.x + sidePadding + col * (tileWidth + gap);
+    const int tileY = topOffset + row * (tileHeight + gap);
+
+    if (i == selectedIndex) {
+      renderer.fillRoundedRect(tileX, tileY, tileWidth, tileHeight, 8, Color::LightGray);
+    }
+
+    const int iconY = tileY + verticalPadding;
+    const uint8_t* iconBitmap = UITheme::getIconBitmap(appIcon(i), iconSize);
+    if (iconBitmap != nullptr) {
+      renderer.drawIcon(iconBitmap, tileX + (tileWidth - iconSize) / 2, iconY, iconSize, iconSize);
+    }
+
+    const std::string label = appLabel(i);
+    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label.c_str(), EpdFontFamily::BOLD);
+    const int textY = iconY + iconSize + iconLabelGap;
+    renderer.drawText(UI_10_FONT_ID, tileX + (tileWidth - textWidth) / 2, textY, label.c_str(), true,
+                      EpdFontFamily::BOLD);
+  }
+}
+
 Rect BaseTheme::drawPopup(const GfxRenderer& renderer, const char* message, const bool refresh) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int marginX = metrics.popupMarginX;

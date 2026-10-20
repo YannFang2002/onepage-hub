@@ -28,6 +28,9 @@ class UITheme {
                                      bool hasSubtitle, int extraReservedHeight = 0);
   static std::string getCoverThumbPath(std::string coverBmpPath, int coverHeight);
   static UIIcon getFileIcon(const std::string& filename);
+  // Bitmap for a UIIcon at the given size (32 or 24 px), or nullptr when the
+  // icon has no asset at that size.
+  static const uint8_t* getIconBitmap(UIIcon icon, int size);
   static int getStatusBarHeight();
   static int getProgressBarHeight();
 

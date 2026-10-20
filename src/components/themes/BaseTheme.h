@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "components/icons/UIIcon.h"
+
 class GfxRenderer;
 struct RecentBook;
 
@@ -99,8 +101,6 @@ struct ThemeMetrics {
   int textFieldCursorThickness;
   int textFieldLineEndOffset;
 };
-
-enum UIIcon { None = 0, Folder, Text, Image, Book, File, Recent, Settings, Transfer, Library, Wifi, Hotspot, Bookmark };
 
 enum class KeyboardKeyType { Normal, Shift, Mode, Space, Del, Ok, Disabled };
 
@@ -206,6 +206,10 @@ class BaseTheme {
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
                               const std::function<UIIcon(int index)>& rowIcon) const;
+  // Launcher grid: one tile per app, flowing left-to-right in `columns` columns.
+  virtual void drawAppGrid(GfxRenderer& renderer, Rect rect, int appCount, int selectedIndex, int columns,
+                           const std::function<std::string(int index)>& appLabel,
+                           const std::function<UIIcon(int index)>& appIcon) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message, bool refresh = true) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage, const int pageCount,

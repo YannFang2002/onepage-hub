@@ -15,6 +15,7 @@
 #include <SPI.h>
 #include <WiFi.h>
 #include <builtinFonts/all.h>
+#include <esp_sleep.h>
 
 #include <cstring>
 
@@ -119,8 +120,9 @@ unsigned long t2 = 0;
 RTC_NOINIT_ATTR uint32_t silentRebootMagic;
 RTC_NOINIT_ATTR uint32_t silentRebootTarget;
 constexpr uint32_t SILENT_REBOOT_MAGIC = 0xC1EAB007;
-constexpr uint32_t SILENT_REBOOT_TARGET_HOME = 0;
+constexpr uint32_t SILENT_REBOOT_TARGET_DESKTOP = 0;
 constexpr uint32_t SILENT_REBOOT_TARGET_READER = 1;
+constexpr uint32_t SILENT_REBOOT_TARGET_LIBRARY = 2;
 
 // How the device is coming back to life, resolved once at boot. Both resume
 // flows suppress the splash and leave the panel holding its pre-boot frame; a
@@ -141,13 +143,19 @@ static bool deepSleepInProgress = false;
 
 void silentRestart() {
   if (deepSleepInProgress) return;  // sleeping supersedes the heap-defrag reboot
-  silentRebootTarget = SILENT_REBOOT_TARGET_HOME;
+  // Land back on the top level the exiting app belongs to: the library when the
+  // user was inside the reader app, the desktop for every other app (file
+  // transfer, settings and their Wi-Fi sub-screens).
+  silentRebootTarget = activityManager.currentRoot() == AppRoot::Library ? SILENT_REBOOT_TARGET_LIBRARY
+                                                                        : SILENT_REBOOT_TARGET_DESKTOP;
   silentRebootMagic = SILENT_REBOOT_MAGIC;
-  LOG_DBG("MAIN", "Silent restart (target=home)");
-  // E-ink retains the previous frame until Home's first paint lands (~2-3s).
+  LOG_DBG("MAIN", "Silent restart (target=%s)",
+          silentRebootTarget == SILENT_REBOOT_TARGET_LIBRARY ? "library" : "desktop");
+  // E-ink retains the previous frame until the target's first paint lands (~2-3s).
   // Without an overlay, users don't see the reboot and fire input through to
-  // Home. Select on the default selectorIndex=0 then opens the most-recent
-  // book, looking like a trampoline back to the reader they just exited.
+  // the library. Select on the default selectorIndex=0 then opens the
+  // most-recent book, looking like a trampoline back to the reader they just
+  // exited.
   GUI.drawPopup(renderer, tr(STR_LOADING_POPUP));
   delay(50);
   ESP.restart();
@@ -241,6 +249,9 @@ static bool loadSleepFrameBuffer() {
 void enterDeepSleep(bool fromTimeout = false) {
   HalPowerManager::Lock powerLock;  // Ensure we are at normal CPU frequency for sleep preparation
   APP_STATE.lastSleepFromReader = activityManager.isReaderActivity();
+  // Remember which app the user fell asleep in: wake restores it instead of
+  // dropping back to the desktop.
+  APP_STATE.lastApp = static_cast<uint8_t>(activityManager.currentApp());
 
   const bool isQuickResumeSleep =
       SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::QUICK_RESUME ||
@@ -325,6 +336,43 @@ void setupDisplayAndFonts(bool seamless = false) {
   LOG_DBG("MAIN", "Fonts setup");
 }
 
+// Wake from deep sleep restores the app the device fell asleep in: the reader
+// resumes its open book, every other app reopens where its onEnter() starts
+// (settings, file transfer's mode picker).
+static void resumeLastApp() {
+  const auto lastApp = static_cast<AppId>(APP_STATE.lastApp);
+
+  if (lastApp == AppId::None) {
+    LOG_DBG("MAIN", "Wake resume: desktop");
+    activityManager.goToDesktop();
+    return;
+  }
+
+  if (lastApp != AppId::Reader) {
+    LOG_DBG("MAIN", "Wake resume: app %u", APP_STATE.lastApp);
+    activityManager.launchApp(lastApp);
+    return;
+  }
+
+  // Reader app: resume the book only when that is still safe. A held Back
+  // button or a previous reader crash (loadCount > 0) drops to the library so
+  // a bad book cannot trap the device in a boot loop.
+  if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
+      mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
+    LOG_DBG("MAIN", "Wake resume: library");
+    activityManager.launchApp(AppId::Reader);
+    return;
+  }
+
+  LOG_DBG("MAIN", "Wake resume: reader (%s)", APP_STATE.openEpubPath.c_str());
+  // Clear app state before opening so a failed load cannot loop.
+  const auto path = APP_STATE.openEpubPath;
+  APP_STATE.openEpubPath = "";
+  APP_STATE.readerActivityLoadCount++;
+  APP_STATE.saveToFile();
+  activityManager.goToReader(path);
+}
+
 void setup() {
   t1 = millis();
 
@@ -345,7 +393,7 @@ void setup() {
   // Bound the target range too — RTC_NOINIT memory is uninitialized on cold boot.
   const bool isSilentReboot = (silentRebootMagic == SILENT_REBOOT_MAGIC);
   const uint32_t snapshotTarget =
-      (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_READER) ? silentRebootTarget : 0;
+      (isSilentReboot && silentRebootTarget <= SILENT_REBOOT_TARGET_LIBRARY) ? silentRebootTarget : 0;
   silentRebootMagic = 0;
   silentRebootTarget = 0;
 
@@ -411,6 +459,12 @@ void setup() {
   ButtonNavigator::setMappedInputManager(mappedInputManager);
 
   const auto wakeupReason = gpio.getWakeupReason();
+  // A non-undefined wakeup cause means the chip came back from deep sleep: the
+  // only case that may resume the previous app. Everything else (power-on,
+  // flash, panic, silent restart) is a cold boot and starts on the desktop.
+  // Note: HalGPIO::WakeupReason::PowerButton is NOT this signal — on this
+  // hardware it also covers a plain power-on reset.
+  const bool wokeFromSleep = esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED;
   switch (wakeupReason) {
     case HalGPIO::WakeupReason::PowerButton:
       LOG_DBG("MAIN", "Verifying power button press duration");
@@ -487,40 +541,35 @@ void setup() {
   }
 
   if (recoveryFirmwareMode) {
-    // Skip normal home/reader routing: jump straight into the SD firmware picker.
+    // Skip normal desktop/app routing: jump straight into the SD firmware picker.
     activityManager.replaceActivity(
         std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
   } else if (HalSystem::isRebootFromPanic()) {
     // If we rebooted from a panic, go to crash report screen to show the panic info
     activityManager.goToCrashReport();
-  } else if (resume == BootResume::Silent && snapshotTarget == SILENT_REBOOT_TARGET_READER &&
-             !APP_STATE.openEpubPath.empty()) {
-    activityManager.goToReader(APP_STATE.openEpubPath);
   } else if (resume == BootResume::Silent) {
-    // target == home (or reader with no open book): land on home — don't fall
-    // through to the sleep-wake "resume reader" logic, which fires on stale
-    // openEpubPath + lastSleepFromReader from a prior session.
-    activityManager.goHome();
-  } else if (APP_STATE.openEpubPath.empty() || !APP_STATE.lastSleepFromReader ||
-             mappedInputManager.isPressed(MappedInputManager::Button::Back) || APP_STATE.readerActivityLoadCount > 0) {
-    // Boot to home screen if no book is open, last sleep was not from reader, back button is held, or reader activity
-    // crashed (indicated by readerActivityLoadCount > 0)
-    activityManager.goHome();
+    // Silent restart (heap defrag after a Wi-Fi activity): land on the top
+    // level the app belonged to, never on a stale resume target.
+    if (snapshotTarget == SILENT_REBOOT_TARGET_READER && !APP_STATE.openEpubPath.empty()) {
+      activityManager.goToReader(APP_STATE.openEpubPath);
+    } else if (snapshotTarget == SILENT_REBOOT_TARGET_DESKTOP) {
+      activityManager.goToDesktop();
+    } else {
+      activityManager.launchApp(AppId::Reader);  // library, or reader without a book
+    }
+  } else if (!wokeFromSleep) {
+    // Cold boot always lands on the desktop.
+    activityManager.goToDesktop();
   } else {
-    // Clear app state to avoid getting into a boot loop if the epub doesn't load
-    const auto path = APP_STATE.openEpubPath;
-    APP_STATE.openEpubPath = "";
-    APP_STATE.readerActivityLoadCount++;
-    APP_STATE.saveToFile();
-    activityManager.goToReader(path);
+    resumeLastApp();
   }
 
   if (resume == BootResume::Silent) {
     // Block until the first paint physically completes. refreshDisplay()
     // waits on the panel BUSY pin so when this returns the user can see the
     // new activity. Without the wait, an edge captured by gpio.update()
-    // during boot dispatches against an invisible Home and the default
-    // selectorIndex=0 opens the most-recent book.
+    // during boot dispatches against an invisible screen and the default
+    // selectorIndex=0 opens whatever is in the first tile.
     activityManager.requestUpdateAndWait();
     // Absorb any button held at this point into currentState as a non-edge:
     // two gpio.update() calls separated by > InputManager's 5ms debounce

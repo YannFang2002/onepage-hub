@@ -1,4 +1,4 @@
-# OnePage Reader — Firmware
+# OnePage Hub — Firmware
 
 > **Based on [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader)** (MIT © Dave Allie).
 > This is an **independent port** of CrossPoint to the self-designed **OnePage** e-reader (**ESP32-C61**).
@@ -16,6 +16,7 @@ CrossPoint is open-source e-reader firmware — community-built, fully hackable,
 - **Bluetooth page-turner** — BLE HID host that learns any remote's buttons.
 - **Power optimization** — BLE-active idle current 42 → 23 mA (controller modem-sleep + 32.768 kHz sleep clock + CPU DFS). See [docs/bluetooth-power-optimization.md](./docs/bluetooth-power-optimization.md).
 - **80 MHz flash clock**, OnePage boot logo, in-reader ruled-lines option.
+- **Desktop launcher** — a three-column app grid on boot (Reader · Settings · File Transfer); waking from sleep resumes the app you were in. Apps are registered in [`src/apps/AppRegistry.cpp`](./src/apps/AppRegistry.cpp), so adding one is a single table entry.
 
 The reader-engine features listed below are inherited from CrossPoint.
 
@@ -117,7 +118,7 @@ USB port or browser before assuming the device is locked. Only reach for the unl
 ### Web installer (specific version)
 
 1. Connect your device to your computer via USB-C and wake/unlock the device
-2. Download a `firmware.bin` from [Releases](https://github.com/crosspoint-reader/crosspoint-reader/releases), local build, or continuous integration artifact.
+2. Download a `firmware.bin` from [Releases](https://github.com/YannFang2002/onepage-hub/releases), local build, or continuous integration artifact.
 3. Go to https://crosspointreader.com/#flash-tools, select device (X3 or X4), click "Custom .bin" and upload a `firmware.bin`.
 
 ### Revert to Official Firmware
@@ -132,7 +133,7 @@ To revert to the official firmware, you can also flash the latest official firmw
 pip install esptool
 ```
 
-2. Download `firmware.bin` from the [releases page](https://github.com/crosspoint-reader/crosspoint-reader/releases).
+2. Download `firmware.bin` from the [releases page](https://github.com/YannFang2002/onepage-hub/releases).
 3. Connect your device via USB-C.
 4. Find the device port. On Linux, run `dmesg` after connecting. On macOS:
 
@@ -192,8 +193,8 @@ Conversion runs the firmware repo's `lib/EpdFont/scripts/fontconvert_sdcard.py` 
 ### Setup
 
 ```bash
-git clone --recursive git@github.com:MoveCall/crosspoint-onepage.git
-cd crosspoint-onepage
+git clone --recursive git@github.com:YannFang2002/onepage-hub.git
+cd onepage-hub
 
 # if cloned without --recursive (pulls the onepage-reader-sdk-arduino submodule):
 git submodule update --init --recursive

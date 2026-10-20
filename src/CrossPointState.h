@@ -15,6 +15,9 @@ class CrossPointState {
   uint8_t recentSleepFill = 0;                          // valid entries (0..SLEEP_RECENT_COUNT)
   uint8_t readerActivityLoadCount = 0;
   bool lastSleepFromReader = false;
+  // App that was active when the device went to sleep (AppId as a byte; 0xFF =
+  // none/desktop). Wake restores it instead of dropping to the desktop.
+  uint8_t lastApp = 0xFF;
   bool showBootScreen = true;
 
   // Returns true if idx was shown within the last checkCount picks.

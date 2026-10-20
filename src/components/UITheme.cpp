@@ -8,6 +8,20 @@
 
 #include "MappedInputManager.h"
 #include "RecentBooksStore.h"
+#include "components/icons/book.h"
+#include "components/icons/book24.h"
+#include "components/icons/bookmark.h"
+#include "components/icons/file24.h"
+#include "components/icons/folder.h"
+#include "components/icons/folder24.h"
+#include "components/icons/hotspot.h"
+#include "components/icons/image24.h"
+#include "components/icons/library.h"
+#include "components/icons/recent.h"
+#include "components/icons/settings2.h"
+#include "components/icons/text24.h"
+#include "components/icons/transfer.h"
+#include "components/icons/wifi.h"
 #include "components/themes/BaseTheme.h"
 #include "components/themes/lyra/Lyra3CoversTheme.h"
 #include "components/themes/lyra/LyraTheme.h"
@@ -153,4 +167,50 @@ void UITheme::drawCenteredText(const GfxRenderer& renderer, Rect screen, int fon
                                bool black, EpdFontFamily::Style style) {
   const int x = screen.x + (screen.width - renderer.getTextWidth(fontId, text, style)) / 2;
   renderer.drawText(fontId, x, y, text, black, style);
+}
+
+const uint8_t* UITheme::getIconBitmap(const UIIcon icon, const int size) {
+  if (size == 24) {
+    switch (icon) {
+      case Folder:
+        return Folder24Icon;
+      case Text:
+        return Text24Icon;
+      case Image:
+        return Image24Icon;
+      case Book:
+        return Book24Icon;
+      case File:
+        return File24Icon;
+      default:
+        return nullptr;
+    }
+  }
+
+  if (size == 32) {
+    switch (icon) {
+      case Folder:
+        return FolderIcon;
+      case Book:
+        return BookIcon;
+      case Recent:
+        return RecentIcon;
+      case Settings:
+        return Settings2Icon;
+      case Transfer:
+        return TransferIcon;
+      case Library:
+        return LibraryIcon;
+      case Wifi:
+        return WifiIcon;
+      case Hotspot:
+        return HotspotIcon;
+      case Bookmark:
+        return BookmarkIcon;
+      default:
+        return nullptr;
+    }
+  }
+
+  return nullptr;
 }

@@ -11,12 +11,13 @@
 
 #include "GfxRenderer.h"
 #include "MappedInputManager.h"
+#include "apps/AppDescriptor.h"
 #include "util/ScreenshotInfo.h"
 
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
+enum class HomeMenuItem { NONE, FILE_BROWSER, RECENTS, OPDS_BROWSER };
 
 /**
  * ActivityManager
@@ -65,6 +66,15 @@ class ActivityManager {
   // This variable must only be set by the main loop, to avoid race conditions
   bool requestedUpdate = false;
 
+  // Which top level the user is currently in. "Go home" (the universal back to
+  // the top level used by every activity) resolves to the desktop or to the
+  // reader app's own home depending on this, so app-internal back navigation
+  // keeps working without every call site knowing about the launcher.
+  AppRoot root = AppRoot::Desktop;
+  // App that owns the current session (AppId::None while on the desktop).
+  // Persisted at sleep time so wake resumes the app the user fell asleep in.
+  AppId activeApp = AppId::None;
+
  public:
   explicit ActivityManager(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : renderer(renderer), mappedInput(mappedInput), renderingMutex(xSemaphoreCreateMutex()) {
@@ -91,6 +101,14 @@ class ActivityManager {
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goToCrashReport();
   void goHome(HomeMenuItem initialMenuItem = HomeMenuItem::NONE);
+  void goToDesktop();
+
+  // Launches a registered app (see AppRegistry). Sets the active app and its
+  // back-navigation root before replacing the current activity.
+  void launchApp(AppId id);
+
+  AppRoot currentRoot() const { return root; }
+  AppId currentApp() const { return activeApp; }
 
   // This will move current activity to stack instead of deleting it
   void pushActivity(std::unique_ptr<Activity>&& activity);

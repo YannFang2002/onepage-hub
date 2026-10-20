@@ -94,5 +94,9 @@ bool CrossPointState::loadFromBinaryFile() {
     lastSleepFromReader = false;
   }
 
+  // lastApp was introduced with the desktop launcher; legacy files resume on
+  // the desktop (0xFF) instead of guessing an app.
+  lastApp = 0xFF;
+
   return true;
 }
