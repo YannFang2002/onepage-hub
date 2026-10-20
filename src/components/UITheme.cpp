@@ -17,6 +17,7 @@
 #include "components/icons/hotspot.h"
 #include "components/icons/image24.h"
 #include "components/icons/library.h"
+#include "components/icons/mic32.h"
 #include "components/icons/recent.h"
 #include "components/icons/settings2.h"
 #include "components/icons/text24.h"
@@ -207,6 +208,8 @@ const uint8_t* UITheme::getIconBitmap(const UIIcon icon, const int size) {
         return HotspotIcon;
       case Bookmark:
         return BookmarkIcon;
+      case Mic:
+        return MicIcon;
       default:
         return nullptr;
     }

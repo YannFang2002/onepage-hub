@@ -15,7 +15,7 @@
 void SleepImageSelectActivity::loadImages() {
   imagePaths.clear();
 
-  for (const char* directory : {"/sleep", "/.sleep"}) {
+  for (const char* directory : {"/system/sleep", "/system/.sleep"}) {
     auto dir = Storage.open(directory);
     if (!dir || !dir.isDirectory()) {
       if (dir) dir.close();

@@ -270,9 +270,10 @@ void OpdsBookBrowserActivity::downloadBook(const OpdsEntry& book) {
   const std::string feedUrl = UrlUtils::buildUrl(server.url, currentPath);
   std::string downloadUrl = UrlUtils::buildUrl(feedUrl, book.href);
   std::string filename =
-      "/" + StringUtils::sanitizeFilename((book.author.empty() ? "" : book.author + " - ") + book.title) + ".epub";
+      "/book/" + StringUtils::sanitizeFilename((book.author.empty() ? "" : book.author + " - ") + book.title) + ".epub";
   LOG_DBG("OPDS", "Downloading: %s -> %s", downloadUrl.c_str(), filename.c_str());
 
+  Storage.mkdir("/book");
   const auto result = HttpDownloader::downloadToFile(
       downloadUrl, filename,
       [this](const size_t downloaded, const size_t total) {

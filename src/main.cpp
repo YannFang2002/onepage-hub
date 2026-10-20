@@ -222,7 +222,7 @@ void waitForPowerRelease() {
   }
 }
 
-constexpr char SLEEP_FRAME_FILE[] = "/.crosspoint/sleep_frame.bin";
+constexpr char SLEEP_FRAME_FILE[] = "/system/.crosspoint/sleep_frame.bin";
 
 static void saveSleepFrameBuffer() {
   HalFile file;
@@ -414,6 +414,14 @@ void setup() {
     activityManager.goToFullScreenMessage("SD card error", EpdFontFamily::BOLD);
     return;
   }
+
+  // New SD layout: /book (library), /system (config/cache/fonts/sleep),
+  // /record (voice recorder). Create the roots so every component can rely
+  // on them being present.
+  Storage.mkdir("/book");
+  Storage.mkdir("/system");
+  Storage.mkdir("/record");
+  Storage.mkdir("/system/screenshots");
 
   HalSystem::checkPanic();
 

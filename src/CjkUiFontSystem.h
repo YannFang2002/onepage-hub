@@ -51,10 +51,10 @@ class CjkUiFontSystem {
   // present on OnePage cards serves both Simplified and Traditional; 10pt UI
   // reuses the same file (slightly large but legible).
   static constexpr const char* kCandidatePaths[] = {
-      "/.fonts/LXGWWenKai-Regular/LXGWWenKai-Regular_12.cpfont",
-      "/fonts/LXGWWenKai-Regular/LXGWWenKai-Regular_12.cpfont",
-      "/.fonts/LXGWWenKai/LXGWWenKai_12.cpfont",
-      "/fonts/LXGWWenKai/LXGWWenKai_12.cpfont",
+      "/system/.fonts/LXGWWenKai-Regular/LXGWWenKai-Regular_12.cpfont",
+      "/system/fonts/LXGWWenKai-Regular/LXGWWenKai-Regular_12.cpfont",
+      "/system/.fonts/LXGWWenKai/LXGWWenKai_12.cpfont",
+      "/system/fonts/LXGWWenKai/LXGWWenKai_12.cpfont",
   };
 
   SdCardFont font_;

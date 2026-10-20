@@ -11,11 +11,11 @@
 OpdsServerStore OpdsServerStore::instance;
 
 namespace {
-constexpr char OPDS_FILE_JSON[] = "/.crosspoint/opds.json";
+constexpr char OPDS_FILE_JSON[] = "/system/.crosspoint/opds.json";
 }  // namespace
 
 bool OpdsServerStore::saveToFile() const {
-  Storage.mkdir("/.crosspoint");
+  Storage.mkdir("/system/.crosspoint");
   return JsonSettingsIO::saveOpds(*this, OPDS_FILE_JSON);
 }
 

@@ -30,7 +30,7 @@ class FileBrowserActivity final : public Activity {
   Mode mode = Mode::Books;
 
   // Files state
-  std::string basepath = "/";
+  std::string basepath = "/book";
   std::vector<std::string> files;
   std::unique_ptr<char[]> fileNameBuffer;
 
@@ -39,11 +39,11 @@ class FileBrowserActivity final : public Activity {
   size_t findEntry(const std::string& name) const;
 
  public:
-  explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/",
+  explicit FileBrowserActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string initialPath = "/book",
                                Mode mode = Mode::Books)
       : Activity("FileBrowser", renderer, mappedInput),
         mode(mode),
-        basepath(initialPath.empty() ? "/" : std::move(initialPath)) {}
+        basepath(initialPath.empty() ? "/book" : std::move(initialPath)) {}
   void onEnter() override;
   void onExit() override;
   void loop() override;

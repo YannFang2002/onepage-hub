@@ -14,7 +14,7 @@ class MappedInputManager;
 // Identifies a top-level app launched from the desktop. The value is persisted
 // in state.json (see CrossPointState::lastApp), so never renumber an existing
 // entry — only append before None.
-enum class AppId : uint8_t { Reader = 0, Settings = 1, FileTransfer = 2, None = 0xFF };
+enum class AppId : uint8_t { Reader = 0, Settings = 1, FileTransfer = 2, Recorder = 3, None = 0xFF };
 
 // Where "go back to the top level" lands while this app is active.
 //   Library: the reader app's own home (recent books / file browser), so the

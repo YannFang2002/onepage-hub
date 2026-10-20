@@ -17,7 +17,7 @@ graph TD
     E --> H[Home/Library/Settings flows]
     E --> I[Network/Web server flows]
     G --> J[lib/Epub parsing + layout + hyphenation]
-    J --> K[SD cache in .crosspoint]
+    J --> K[SD cache in /system/.crosspoint]
     E --> L[GfxRenderer]
     L --> M[E-ink display buffer]
 ```
@@ -142,7 +142,7 @@ Two singletons are central:
 Typical persisted areas on SD:
 
 ```text
-/.crosspoint/
+/system/.crosspoint/
   epub_<hash>/
     book.bin
     css_rules.cache

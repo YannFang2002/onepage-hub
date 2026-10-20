@@ -95,7 +95,9 @@ void DesktopActivity::render(RenderLock&&) {
       [apps](int index) { return std::string(I18N.get(apps[index].title)); },
       [apps](int index) { return apps[index].icon; });
 
-  const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), "", "");
+  // Front keys move across columns: label them so Left/Right are visible in the
+  // hint row (previously only "Select" was rendered, leaving both slots blank).
+  const auto labels = mappedInput.mapLabels("", tr(STR_SELECT), tr(STR_DIR_LEFT), tr(STR_DIR_RIGHT));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
   renderer.displayBuffer();

@@ -6,8 +6,8 @@
 
 struct SdCardFontFileInfo {
   std::string path;   // v4 on-disk naming: "/<root>/<Family>/<Family>_<size>.cpfont"
-                      // where <root> is "/.fonts" (preferred, hidden) or "/fonts" (visible).
-                      // e.g. "/.fonts/NotoSansCJK/NotoSansCJK_14.cpfont"
+                      // where <root> is "/system/.fonts" (preferred, hidden) or "/system/fonts" (visible).
+                      // e.g. "/system/.fonts/NotoSansCJK/NotoSansCJK_14.cpfont"
   uint8_t pointSize;  // parsed from filename: 14
   uint8_t style;      // always 0 in v4 (all 4 styles bundled in one file);
                       // kept for potential future formats
@@ -28,8 +28,8 @@ class SdCardFontRegistry {
   static constexpr int MAX_SD_FAMILIES = 128;
   // Two top-level roots are scanned at discovery time. Hidden is preferred
   // when creating new installs; both are read from if present.
-  static constexpr const char* FONTS_DIR_HIDDEN = "/.fonts";
-  static constexpr const char* FONTS_DIR_VISIBLE = "/fonts";
+  static constexpr const char* FONTS_DIR_HIDDEN = "/system/.fonts";
+  static constexpr const char* FONTS_DIR_VISIBLE = "/system/fonts";
 
   // Returns the existing root for `familyName` (the one that contains
   // /<root>/<familyName>/), or nullptr if the family is not installed in
@@ -54,6 +54,6 @@ class SdCardFontRegistry {
 
   static bool parseFilename(const char* filename, uint8_t& size, uint8_t& style);
   static void scanDirectory(const char* dirPath, SdCardFontFamilyInfo& family);
-  // Scan one root (e.g. "/.fonts"), append families to `out`, dedup by name.
+  // Scan one root (e.g. "/system/.fonts"), append families to `out`, dedup by name.
   static void scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out);
 };

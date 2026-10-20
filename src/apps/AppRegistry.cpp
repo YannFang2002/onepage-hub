@@ -2,6 +2,7 @@
 
 #include "activities/home/HomeActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
+#include "activities/recorder/RecorderActivity.h"
 #include "activities/settings/SettingsActivity.h"
 
 namespace {
@@ -20,6 +21,10 @@ std::unique_ptr<Activity> createFileTransfer(GfxRenderer& renderer, MappedInputM
   return std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput);
 }
 
+std::unique_ptr<Activity> createRecorder(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return std::make_unique<RecorderActivity>(renderer, mappedInput);
+}
+
 // Display order == tile order. To add an app:
 //   1. append a value to AppId (never renumber existing ones)
 //   2. add the factory above (if the app does not exist yet)
@@ -29,6 +34,7 @@ constexpr AppDescriptor kApps[] = {
     {AppId::Reader, StrId::STR_APP_READER, UIIcon::Book, AppRoot::Library, &createReader},
     {AppId::Settings, StrId::STR_SETTINGS_TITLE, UIIcon::Settings, AppRoot::Desktop, &createSettings},
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, AppRoot::Desktop, &createFileTransfer},
+    {AppId::Recorder, StrId::STR_VOICE_RECORDER, UIIcon::Mic, AppRoot::Desktop, &createRecorder},
 };
 
 }  // namespace

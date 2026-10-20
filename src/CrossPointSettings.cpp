@@ -24,11 +24,11 @@ void readAndValidate(HalFile& file, uint8_t& member, const uint8_t maxValue) {
 
 namespace {
 constexpr uint8_t SETTINGS_FILE_VERSION = 1;
-constexpr char SETTINGS_FILE_BIN[] = "/.crosspoint/settings.bin";
-constexpr char SETTINGS_FILE_JSON[] = "/.crosspoint/settings.json";
-constexpr char SETTINGS_FILE_BAK[] = "/.crosspoint/settings.bin.bak";
-constexpr char LANG_FILE_BIN[] = "/.crosspoint/language.bin";
-constexpr char LANG_FILE_BAK[] = "/.crosspoint/language.bin.bak";
+constexpr char SETTINGS_FILE_BIN[] = "/system/.crosspoint/settings.bin";
+constexpr char SETTINGS_FILE_JSON[] = "/system/.crosspoint/settings.json";
+constexpr char SETTINGS_FILE_BAK[] = "/system/.crosspoint/settings.bin.bak";
+constexpr char LANG_FILE_BIN[] = "/system/.crosspoint/language.bin";
+constexpr char LANG_FILE_BAK[] = "/system/.crosspoint/language.bin.bak";
 
 // Convert legacy front button layout into explicit logical->hardware mapping.
 void applyLegacyFrontButtonLayout(CrossPointSettings& settings) {
@@ -96,7 +96,7 @@ uint8_t CrossPointSettings::sleepTimeoutEnumToMinutes(const uint8_t legacyValue)
 }
 
 bool CrossPointSettings::saveToFile() const {
-  Storage.mkdir("/.crosspoint");
+  Storage.mkdir("/system/.crosspoint");
   return JsonSettingsIO::saveSettings(*this, SETTINGS_FILE_JSON);
 }
 

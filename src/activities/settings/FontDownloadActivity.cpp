@@ -71,7 +71,7 @@ void FontDownloadActivity::onWifiSelectionComplete(const bool success) {
 bool FontDownloadActivity::fetchAndParseManifest() {
   // Download manifest to a temp file on SD card to avoid holding both
   // TLS buffers and the full JSON string in RAM simultaneously.
-  static constexpr const char* MANIFEST_TMP = "/fonts_manifest.tmp";
+  static constexpr const char* MANIFEST_TMP = "/system/fonts_manifest.tmp";
 
   auto result = HttpDownloader::downloadToFile(FONT_MANIFEST_URL, MANIFEST_TMP, nullptr);
   if (result != HttpDownloader::OK) {

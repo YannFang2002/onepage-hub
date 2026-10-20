@@ -9,9 +9,9 @@
 
 namespace {
 constexpr uint8_t STATE_FILE_VERSION = 4;
-constexpr char STATE_FILE_BIN[] = "/.crosspoint/state.bin";
-constexpr char STATE_FILE_JSON[] = "/.crosspoint/state.json";
-constexpr char STATE_FILE_BAK[] = "/.crosspoint/state.bin.bak";
+constexpr char STATE_FILE_BIN[] = "/system/.crosspoint/state.bin";
+constexpr char STATE_FILE_JSON[] = "/system/.crosspoint/state.json";
+constexpr char STATE_FILE_BAK[] = "/system/.crosspoint/state.bin.bak";
 }  // namespace
 
 CrossPointState CrossPointState::instance;
@@ -32,7 +32,7 @@ void CrossPointState::pushRecentSleep(uint16_t idx) {
 }
 
 bool CrossPointState::saveToFile() const {
-  Storage.mkdir("/.crosspoint");
+  Storage.mkdir("/system/.crosspoint");
   return JsonSettingsIO::saveState(*this, STATE_FILE_JSON);
 }
 

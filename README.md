@@ -164,7 +164,7 @@ Convert your own TTF/OTF files into `.cpfont` files that load from the SD card. 
 1. Go to https://crosspointreader.com/fonts and open the "SD-card font builder" form.
 2. Upload up to four styles (regular, bold, italic, bold-italic), set the family name, point sizes, and Unicode range.
 3. Download the generated `.cpfont` files.
-4. Copy them to your SD card under `/fonts/YourFont/` (or `/.fonts/YourFont/` to hide the folder).
+4. Copy them to your SD card under `/system/fonts/YourFont/` (or `/system/.fonts/YourFont/` to hide the folder).
 5. Select the font on the device from the font settings.
 
 Conversion runs the firmware repo's `lib/EpdFont/scripts/fontconvert_sdcard.py` script unmodified, so output matches a local host build.
@@ -256,10 +256,10 @@ CrossPoint Reader is pretty aggressive about caching data down to the SD card to
 ### Data caching
 
 The first time chapters of a book are loaded, they are cached to the SD card. Subsequent loads are served from the
-cache. This cache directory exists at `.crosspoint` on the SD card. The structure is as follows:
+cache. This cache directory exists at `/system/.crosspoint` on the SD card. The structure is as follows:
 
 ```text
-.crosspoint/
+/system/.crosspoint/
 ├── epub_<hash>/         # one directory per book, named by content hash
 │   ├── progress.bin     # reading position (chapter, page, etc.)
 │   ├── cover.bmp        # generated cover image
@@ -275,7 +275,7 @@ cache. This cache directory exists at `.crosspoint` on the SD card. The structur
 └── recent.json          # recent books list
 ```
 
-Removing `/.crosspoint` clears all cached metadata and forces a full regeneration on next open. Book deletes, overwrites, and moves done through the firmware or web UI clear or re-key matching caches; manual SD-card edits may leave stale cache directories behind.
+Removing `/system/.crosspoint` clears all cached metadata and forces a full regeneration on next open. Book deletes, overwrites, and moves done through the firmware or web UI clear or re-key matching caches; manual SD-card edits may leave stale cache directories behind.
 
 For more details on the internal file structures, see the [file formats document](./docs/file-formats.md).
 

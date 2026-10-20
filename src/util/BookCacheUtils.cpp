@@ -22,11 +22,11 @@ bool isBookCacheDirectoryName(const char* name) {
 
 void clearBookCache(const std::string& path) {
   if (FsHelpers::hasEpubExtension(path)) {
-    Epub(path, "/.crosspoint").clearCache();
+    Epub(path, "/system/.crosspoint").clearCache();
   } else if (FsHelpers::hasXtcExtension(path)) {
-    Xtc(path, "/.crosspoint").clearCache();
+    Xtc(path, "/system/.crosspoint").clearCache();
   } else if (FsHelpers::hasTxtExtension(path)) {
-    Txt(path, "/.crosspoint").clearCache();
+    Txt(path, "/system/.crosspoint").clearCache();
   } else {
     return;
   }

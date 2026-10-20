@@ -27,28 +27,31 @@ There are three ways to install fonts:
    [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts)
 2. Copy font family folders to one of two locations on your SD card:
 
-   - `/.fonts/` — hidden directory (preferred; keeps the SD root tidy
+   - `/system/.fonts/` — hidden directory (preferred; keeps the SD root tidy
      when mounted on a desktop)
-   - `/fonts/` — visible directory (use this if your OS hides dot-files
+   - `/system/fonts/` — visible directory (use this if your OS hides dot-files
      and you'd rather see the folder in your file manager)
 
    Both roots are always scanned at boot and the results are merged: a
-   family installed in `/fonts/` shows up even when `/.fonts/` also
+   family installed in `/system/fonts/` shows up even when `/system/.fonts/` also
    exists, and vice versa. The two roots only collide if the same family
-   name appears in both — in that case the copy in `/.fonts/` wins and
-   the duplicate in `/fonts/` is ignored.
+   name appears in both — in that case the copy in `/system/.fonts/` wins and
+   the duplicate in `/system/fonts/` is ignored.
 
        SD Card Root/
-       ├── .fonts/                     ← Hidden root (preferred)
-       │   └── Literata/
-       │       ├── Literata_12.cpfont
-       │       ├── Literata_14.cpfont
-       │       ├── Literata_16.cpfont
-       │       └── Literata_18.cpfont
-       └── fonts/                      ← Visible root (equally valid)
-           └── Merriweather/
-               ├── Merriweather_12.cpfont
-               └── ...
+       ├── system/
+       │   ├── .fonts/            ← hidden root (preferred)
+       │   │   └── Literata/
+       │   │       ├── Literata_12.cpfont
+       │   │       ├── Literata_14.cpfont
+       │   │       ├── Literata_16.cpfont
+       │   │       └── Literata_18.cpfont
+       │   └── fonts/             ← visible root (equally valid)
+       │       └── Merriweather/
+       │           ├── Merriweather_12.cpfont
+       │           └── ...
+       ├── book/
+       └── record/
 
 3. Insert the SD card and power on your CrossPoint reader
 

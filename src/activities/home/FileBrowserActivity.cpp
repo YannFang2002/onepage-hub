@@ -80,7 +80,7 @@ void FileBrowserActivity::onEnter() {
 
   auto root = Storage.open(basepath.c_str());
   if (!root) {
-    basepath = "/";
+    basepath = (mode == Mode::Books) ? "/book" : "/";
     loadFiles();
   } else if (!root.isDirectory()) {
     lockLongPressBack = mappedInput.isPressed(MappedInputManager::Button::Back);
@@ -190,8 +190,8 @@ void FileBrowserActivity::loop() {
   // Long press BACK (1s+) goes to root folder (Books mode only).
   // In firmware-pick mode we keep navigation simple: short Back = up dir / cancel.
   if (mode == Mode::Books && mappedInput.isPressed(MappedInputManager::Button::Back) &&
-      mappedInput.getHeldTime() >= GO_HOME_MS && basepath != "/" && !lockLongPressBack) {
-    basepath = "/";
+      mappedInput.getHeldTime() >= GO_HOME_MS && basepath != "/book" && !lockLongPressBack) {
+    basepath = "/book";
     loadFiles();
     selectorIndex = 0;
     requestUpdate();
@@ -276,13 +276,16 @@ void FileBrowserActivity::loop() {
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    // Short press: go up one directory, or go home if at root
+    // Short press: go up one directory, or leave the browser at its root.
+    // Books mode is rooted at the library folder; the firmware picker still
+    // browses the whole card.
     if (mappedInput.getHeldTime() < GO_HOME_MS) {
-      if (basepath != "/") {
+      const char* rootPath = (mode == Mode::Books) ? "/book" : "/";
+      if (basepath != rootPath) {
         const std::string oldPath = basepath;
 
-        basepath.replace(basepath.find_last_of('/'), std::string::npos, "");
-        if (basepath.empty()) basepath = "/";
+        const auto slash = basepath.find_last_of('/');
+        basepath = (slash == std::string::npos || slash == 0) ? rootPath : basepath.substr(0, slash);
         loadFiles();
 
         const auto pos = oldPath.find_last_of('/');
@@ -351,10 +354,12 @@ void FileBrowserActivity::render(RenderLock&&) {
   const auto pageHeight = renderer.getScreenHeight();
   const auto& metrics = UITheme::getInstance().getMetrics();
 
+  const bool atRoot = (mode == Mode::Books) ? (basepath == "/book") : (basepath == "/");
   std::string folderName =
       (mode == Mode::PickFirmware)
           ? std::string(tr(STR_SELECT_FIRMWARE_FILE))
-          : ((basepath == "/") ? std::string(tr(STR_SD_CARD)) : basepath.substr(basepath.rfind('/') + 1));
+          : (atRoot ? std::string(mode == Mode::Books ? tr(STR_LIBRARY) : tr(STR_SD_CARD))
+                    : basepath.substr(basepath.rfind('/') + 1));
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, folderName.c_str());
 
   const int pathLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
@@ -401,7 +406,7 @@ void FileBrowserActivity::render(RenderLock&&) {
   }
 
   // Help text
-  const char* backLabel = (basepath == "/") ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
+  const char* backLabel = atRoot ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
   const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && files[selectorIndex].back() != '/';

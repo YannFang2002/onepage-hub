@@ -63,7 +63,7 @@ void SleepActivity::renderCustomSleepScreen() const {
     return;
   }
 
-  for (const char* sleepDir : {"/sleep", "/.sleep"}) {
+  for (const char* sleepDir : {"/system/sleep", "/system/.sleep"}) {
     auto dir = Storage.open(sleepDir);
     if (!dir || !dir.isDirectory()) {
       if (dir) dir.close();
@@ -103,7 +103,7 @@ void SleepActivity::renderCustomSleepScreen() const {
   }
 
   // Legacy root-level custom sleep image.
-  if (renderSleepImageFile("/sleep.bmp")) {
+  if (renderSleepImageFile("/system/sleep.bmp")) {
     return;
   }
 
@@ -141,11 +141,11 @@ bool SleepActivity::renderSleepImageFile(const std::string& path) const {
     pathHash ^= c;
     pathHash *= 16777619u;
   }
-  const auto cachePath = std::string("/.crosspoint/sleep_") + std::to_string(pathHash) + "_" +
+  const auto cachePath = std::string("/system/.crosspoint/sleep_") + std::to_string(pathHash) + "_" +
                          std::to_string(fileSize) + ".bmp";
 
   if (!Storage.exists(cachePath.c_str())) {
-    Storage.mkdir("/.crosspoint");
+    Storage.mkdir("/system/.crosspoint");
     HalFile source;
     HalFile target;
     bool converted = Storage.openFileForRead("SLP", path, source) &&
@@ -295,7 +295,7 @@ void SleepActivity::renderCoverSleepScreen() const {
   // Check if the current book is XTC, TXT, or EPUB
   if (FsHelpers::hasXtcExtension(APP_STATE.openEpubPath)) {
     // Handle XTC file
-    Xtc lastXtc(APP_STATE.openEpubPath, "/.crosspoint");
+    Xtc lastXtc(APP_STATE.openEpubPath, "/system/.crosspoint");
     if (!lastXtc.load()) {
       LOG_ERR("SLP", "Failed to load last XTC");
       return (this->*renderNoCoverSleepScreen)();
@@ -309,7 +309,7 @@ void SleepActivity::renderCoverSleepScreen() const {
     coverBmpPath = lastXtc.getCoverBmpPath();
   } else if (FsHelpers::hasTxtExtension(APP_STATE.openEpubPath)) {
     // Handle TXT file - looks for cover image in the same folder
-    Txt lastTxt(APP_STATE.openEpubPath, "/.crosspoint");
+    Txt lastTxt(APP_STATE.openEpubPath, "/system/.crosspoint");
     if (!lastTxt.load()) {
       LOG_ERR("SLP", "Failed to load last TXT");
       return (this->*renderNoCoverSleepScreen)();
@@ -323,7 +323,7 @@ void SleepActivity::renderCoverSleepScreen() const {
     coverBmpPath = lastTxt.getCoverBmpPath();
   } else if (FsHelpers::hasEpubExtension(APP_STATE.openEpubPath)) {
     // Handle EPUB file
-    Epub lastEpub(APP_STATE.openEpubPath, "/.crosspoint");
+    Epub lastEpub(APP_STATE.openEpubPath, "/system/.crosspoint");
     // Skip loading css since we only need metadata here
     if (!lastEpub.load(true, true)) {
       LOG_ERR("SLP", "Failed to load last epub");

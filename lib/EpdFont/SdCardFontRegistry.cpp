@@ -176,7 +176,7 @@ void SdCardFontRegistry::scanDirectory(const char* dirPath, SdCardFontFamilyInfo
   }
 }
 
-// Scan a single root (e.g. "/.fonts") and append its families to `out`.
+// Scan a single root (e.g. "/system/.fonts") and append its families to `out`.
 // Skips families whose names already exist in `out` (de-duplicates between
 // the hidden and visible roots — first scan wins).
 void SdCardFontRegistry::scanRoot(const char* rootPath, std::vector<SdCardFontFamilyInfo>& out) {

@@ -58,7 +58,7 @@ int clampPercent(int percent) {
 
 // SD card folder finished books are moved into. Single source of truth for the path.
 // constexpr ⇒ lives in flash .rodata, no DRAM cost.
-constexpr char READ_FOLDER[] = "/read";
+constexpr char READ_FOLDER[] = "/book/read";
 
 // True if path is inside READ_FOLDER (starts with "<READ_FOLDER>/"). Non-allocating so
 // it is cheap to call from loop(), and avoids reintroducing a separate "/Read/" literal.
@@ -103,6 +103,7 @@ std::string buildReadFolderDestination(const std::string& srcPath) {
   const size_t lastSlash = srcPath.rfind('/');
   const std::string filename = (lastSlash != std::string::npos) ? srcPath.substr(lastSlash + 1) : srcPath;
 
+  Storage.mkdir("/book");
   Storage.mkdir(READ_FOLDER);
   std::string dstPath = std::string(READ_FOLDER) + "/" + filename;
   if (!Storage.exists(dstPath.c_str())) {
@@ -132,7 +133,7 @@ void moveFinishedBookToReadFolder(const std::string& srcPath, const std::string&
   }
 
   // Cache dir is keyed by hash of the epub path (see Epub ctor), so it must be re-keyed.
-  const std::string newCachePath = "/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(dstPath));
+  const std::string newCachePath = "/system/.crosspoint/epub_" + std::to_string(std::hash<std::string>{}(dstPath));
   if (!oldCachePath.empty() && Storage.exists(oldCachePath.c_str())) {
     if (!Storage.rename(oldCachePath.c_str(), newCachePath.c_str())) {
       LOG_ERR("ERS", "Failed to rename cache dir %s -> %s (non-fatal)", oldCachePath.c_str(), newCachePath.c_str());

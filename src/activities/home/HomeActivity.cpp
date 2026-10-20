@@ -63,7 +63,7 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
       if (!Storage.exists(coverPath.c_str())) {
         // If epub, try to load the metadata for title/author and cover
         if (FsHelpers::hasEpubExtension(book.path)) {
-          Epub epub(book.path, "/.crosspoint");
+          Epub epub(book.path, "/system/.crosspoint");
           // Skip loading css since we only need metadata here
           epub.load(false, true);
 
@@ -82,7 +82,7 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
           requestUpdate();
         } else if (FsHelpers::hasXtcExtension(book.path)) {
           // Handle XTC file
-          Xtc xtc(book.path, "/.crosspoint");
+          Xtc xtc(book.path, "/system/.crosspoint");
           if (xtc.load()) {
             // Try to generate thumbnail image for Continue Reading card
             if (!showingLoading) {
