@@ -24,6 +24,8 @@ build
 /.venv
 *.local*
 *.cpfont
+# The seed SD-card layout ships the bundled CJK fonts under system/fonts.
+!sd-card/system/fonts/**/*.cpfont
 lib/EpdFont/scripts/downloaded_fonts/
 lib/EpdFont/scripts/instanced_fonts/
 lib/EpdFont/scripts/output/

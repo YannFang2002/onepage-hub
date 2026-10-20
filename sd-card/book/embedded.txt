@@ -1,0 +1,57 @@
+Chapter 1: What is an Embedded System?
+
+An embedded system is a computer system designed to perform a specific function within a larger mechanical or electrical system. Unlike general-purpose computers like desktops and laptops, embedded systems are built for dedicated tasks. They are everywhere — in your car, your washing machine, your thermostat, your wristwatch, and even your toothbrush.
+
+The defining characteristic of an embedded system is constraint. These systems operate with limited memory, limited processing power, and limited energy. A microcontroller might have only 256 kilobytes of flash memory and 64 kilobytes of RAM — thousands of times less than a typical smartphone. Yet within these constraints, embedded systems must perform their tasks reliably, efficiently, and often in real time.
+
+The ESP32 family of microcontrollers, developed by Espressif Systems, has revolutionized the embedded systems landscape. By integrating WiFi and Bluetooth connectivity into an affordable, powerful chip, the ESP32 has made it possible for hobbyists and professionals alike to build connected devices without the complexity and cost of traditional approaches.
+
+Chapter 2: Understanding E-Paper Displays
+
+Electronic paper, commonly known as e-paper or e-ink, is a display technology designed to mimic the appearance of ordinary ink on paper. Unlike LCD or OLED screens, e-paper displays reflect ambient light rather than emitting their own, making them comfortable to read in direct sunlight and easy on the eyes during extended reading sessions.
+
+The technology behind e-paper was invented at the MIT Media Lab in the 1990s. The basic principle involves tiny microcapsules, each about the diameter of a human hair, suspended in a clear fluid. Each microcapsule contains positively charged white particles and negatively charged black particles. When an electric field is applied, the particles move to the top or bottom of the capsule, creating either a white or black pixel visible to the viewer.
+
+One of the most remarkable properties of e-paper is bistability — once an image is displayed, it remains visible without any power consumption. The particles stay in place until a new electric field is applied. This makes e-paper ideal for applications where the display content changes infrequently, such as e-book readers, shelf labels, and bus stop timetables.
+
+However, e-paper has significant limitations. The refresh rate is much slower than LCD or OLED — a full screen update typically takes one to two seconds. Partial updates are faster but can leave ghosting artifacts, where traces of the previous image remain visible. Color e-paper displays exist but are even slower and offer limited color gamuts compared to traditional screens.
+
+Chapter 3: The SSD1677 Display Controller
+
+The SSD1677 is a display controller IC manufactured by Solomon Systech, designed specifically for driving e-paper displays. It supports resolutions up to 960 by 680 pixels and can handle both black-and-white and grayscale content through a multi-plane RAM architecture.
+
+Communication with the SSD1677 is typically done over a 4-wire SPI interface. The host microcontroller sends commands and data through the MOSI line, with a separate data/command pin (DC) indicating whether the current byte is a command or display data. The controller also provides a BUSY output that the host must monitor — many operations, particularly display updates, take hundreds of milliseconds to complete, and the host must wait for the BUSY signal to deassert before sending new commands.
+
+The initialization sequence for the SSD1677 involves setting up the gate driving voltage, source driving voltage, booster soft start parameters, and the lookup table (LUT) that controls the waveform applied to the display during updates. The LUT is perhaps the most critical parameter — it determines the voltage levels and timing for each phase of the update cycle, and must be tuned for the specific e-paper panel being driven.
+
+Partial updates are one of the SSD1677's most useful features. Instead of refreshing the entire display, the controller can update a rectangular region defined by the X and Y address windows. This is much faster than a full update and avoids the characteristic full-screen flash. However, partial updates can accumulate ghosting artifacts over time, so a periodic full refresh is recommended to maintain display quality.
+
+Chapter 4: Building an E-Paper Reader
+
+Building an e-paper reader from scratch is an excellent embedded systems project. It combines hardware interfacing (SPI communication, button handling), software architecture (screen management, event handling), data processing (text pagination, font rendering), and user experience design (navigation, power management).
+
+The hardware is straightforward. An ESP32-S3 module provides the processing power, WiFi connectivity, and sufficient GPIO pins. A 3.7-inch e-paper display connects via SPI. Three tactile buttons provide user input — up, down, and select. The entire system can be powered from a lithium battery, with the ESP32's deep sleep mode and the e-paper's bistable nature enabling weeks of battery life on a single charge.
+
+The software architecture follows a layered design. At the lowest level, the SPI driver handles communication with the display controller. Above that, a framebuffer abstraction manages the pixel data in memory. The UI framework provides widgets — buttons, lists, progress bars — that render themselves into the framebuffer. At the top, screen management code handles navigation between different views: the library, the reader, and the settings.
+
+Text pagination is the most algorithmically interesting part. Given a text file, a font, and a display area, the paginator must determine where each page begins and ends. This requires measuring the width of each character, wrapping lines at word boundaries (or character boundaries for CJK text), and tracking the accumulated height until the page is full. The challenge is doing this efficiently for large files without loading the entire text into memory.
+
+Chapter 5: Font Rendering on Embedded Systems
+
+Fonts on embedded systems are typically stored as bitmap data rather than the vector outlines used on desktop systems. Each glyph is represented as a grid of pixels, with each bit indicating whether that pixel should be drawn. This approach trades storage efficiency for rendering speed — drawing a bitmap glyph requires only copying bits to the framebuffer, with no complex curve rasterization.
+
+For a monochrome e-paper display, bitmap fonts are perfectly adequate. The display resolution is typically high enough that the jagged edges inherent in bitmap fonts are not objectionable. Anti-aliasing, which uses grayscale pixels to smooth edges, can be simulated on e-paper using dithering patterns, but this adds visual noise and is generally not worth the complexity.
+
+Supporting Chinese, Japanese, and Korean (CJK) characters presents a unique challenge. While the ASCII character set contains only 95 printable characters, the CJK unified ideographs block in Unicode contains over 20,000 characters. Storing a complete bitmap font for all CJK characters at 16 pixels height requires several hundred kilobytes of flash memory. Various compression techniques — including run-length encoding, sparse tables, and progressive loading — can reduce this footprint.
+
+Chapter 6: Power Management
+
+Power management is critical for a battery-powered e-paper reader. The goal is to maximize the time between charges while maintaining a responsive user experience. Several strategies work together to achieve this.
+
+The most impactful optimization is putting the microcontroller into deep sleep when the user is not actively reading. In deep sleep mode, the ESP32-S3 consumes only about 7 microamperes — a tiny fraction of its active power consumption. Since the e-paper display retains its image without power, the reader can remain in deep sleep indefinitely without losing the displayed page. A button press triggers a wake-up interrupt, resuming normal operation within milliseconds.
+
+The display itself consumes power only during updates. A full refresh of a 3.7-inch display draws about 25 milliamps for approximately 1.5 seconds. A partial refresh is faster and uses proportionally less energy. By minimizing unnecessary display updates and using partial refreshes whenever possible, the overall energy consumption can be reduced significantly.
+
+WiFi is the most power-hungry subsystem. The radio draws over 100 milliamps when active. For an e-paper reader, WiFi should be enabled only when needed — for downloading books or syncing reading progress — and disabled immediately afterward. The ESP32's modem sleep mode can reduce WiFi power consumption during idle periods, but for maximum battery life, it is better to turn WiFi off entirely between transfer sessions.
+
+With careful power management, a battery-powered e-paper reader can achieve weeks or even months of standby time, and dozens of hours of active reading time on a single charge. This is one of the key advantages of e-paper technology over traditional LCD or OLED displays.
