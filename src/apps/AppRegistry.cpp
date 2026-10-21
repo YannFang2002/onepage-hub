@@ -1,5 +1,6 @@
 #include "AppRegistry.h"
 
+#include "activities/home/FileBrowserActivity.h"
 #include "activities/home/HomeActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
 #include "activities/recorder/RecorderActivity.h"
@@ -25,6 +26,13 @@ std::unique_ptr<Activity> createRecorder(GfxRenderer& renderer, MappedInputManag
   return std::make_unique<RecorderActivity>(renderer, mappedInput);
 }
 
+// On-device file manager: the same browser the reader uses, but rooted at the SD
+// card and unfiltered, so recordings, fonts, /system and loose files are all
+// visible and deletable without a phone or the web UI.
+std::unique_ptr<Activity> createFileManager(GfxRenderer& renderer, MappedInputManager& mappedInput) {
+  return std::make_unique<FileBrowserActivity>(renderer, mappedInput, "/", FileBrowserActivity::Mode::Manager);
+}
+
 // Display order == tile order. To add an app:
 //   1. append a value to AppId (never renumber existing ones)
 //   2. add the factory above (if the app does not exist yet)
@@ -35,6 +43,7 @@ constexpr AppDescriptor kApps[] = {
     {AppId::Settings, StrId::STR_SETTINGS_TITLE, UIIcon::Settings, AppRoot::Desktop, &createSettings},
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, AppRoot::Desktop, &createFileTransfer},
     {AppId::Recorder, StrId::STR_VOICE_RECORDER, UIIcon::Mic, AppRoot::Desktop, &createRecorder},
+    {AppId::FileManager, StrId::STR_FILE_MANAGER, UIIcon::Folder, AppRoot::Desktop, &createFileManager},
 };
 
 }  // namespace

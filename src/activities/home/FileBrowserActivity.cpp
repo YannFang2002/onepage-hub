@@ -18,6 +18,14 @@
 namespace {
 constexpr unsigned long GO_HOME_MS = 1000;
 constexpr size_t NAME_BUFFER_SIZE = 500;
+
+// Formats the reader can actually open. The file manager lists everything, so it
+// only offers "Open" for these; other files are browse/delete only.
+bool isReaderOpenable(std::string_view filename) {
+  return FsHelpers::hasEpubExtension(filename) || FsHelpers::hasXtcExtension(filename) ||
+         FsHelpers::hasTxtExtension(filename) || FsHelpers::hasMarkdownExtension(filename) ||
+         FsHelpers::hasBmpExtension(filename);
+}
 }  // namespace
 
 void FileBrowserActivity::loadFiles() {
@@ -47,14 +55,15 @@ void FileBrowserActivity::loadFiles() {
       files.emplace_back(std::string(fileNameBuffer.get()) + "/");
     } else {
       std::string_view filename{fileNameBuffer.get()};
-      if (mode == Mode::PickFirmware) {
+      if (mode == Mode::Manager) {
+        // File manager: show everything, whatever the extension.
+        files.emplace_back(filename);
+      } else if (mode == Mode::PickFirmware) {
         // Firmware picker: only show .bin files.
         if (FsHelpers::checkFileExtension(filename, ".bin")) {
           files.emplace_back(filename);
         }
-      } else if (FsHelpers::hasEpubExtension(filename) || FsHelpers::hasXtcExtension(filename) ||
-                 FsHelpers::hasTxtExtension(filename) || FsHelpers::hasMarkdownExtension(filename) ||
-                 FsHelpers::hasBmpExtension(filename)) {
+      } else if (isReaderOpenable(filename)) {
         files.emplace_back(filename);
       }
     }
@@ -227,7 +236,9 @@ void FileBrowserActivity::loop() {
       return;
     }
 
-    if (mode == Mode::Books && mappedInput.getHeldTime() >= GO_HOME_MS) {
+    // Long press deletes the entry. Available in Books and Manager modes; the
+    // firmware picker must stay read-only.
+    if (mode != Mode::PickFirmware && mappedInput.getHeldTime() >= GO_HOME_MS) {
       // --- LONG PRESS ACTION: DELETE FILE OR DIRECTORY ---
       std::string cleanBasePath = basepath;
       if (cleanBasePath.back() != '/') cleanBasePath += "/";
@@ -268,6 +279,9 @@ void FileBrowserActivity::loop() {
         loadFiles();
         selectorIndex = 0;
         requestUpdate();
+      } else if (mode == Mode::Manager && !isReaderOpenable(entry)) {
+        // File manager: arbitrary files are browse/delete only, nothing to open.
+        requestUpdate();
       } else {
         onSelectBook(basepath + entry);
       }
@@ -299,6 +313,9 @@ void FileBrowserActivity::loop() {
         res.isCancelled = true;
         setResult(std::move(res));
         finish();
+      } else if (mode == Mode::Manager) {
+        // The file manager is launched from the launcher, so back at "/" exits to it.
+        onGoDesktop();
       } else {
         onGoHome();
       }
@@ -406,11 +423,19 @@ void FileBrowserActivity::render(RenderLock&&) {
   }
 
   // Help text
-  const char* backLabel = atRoot ? (mode == Mode::PickFirmware ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
+  // PickFirmware/Manager both leave the activity at their root (back to caller /
+  // back to the launcher), so they show "Back"; the Books browser returns to the
+  // reader's home.
+  const bool exitsAtRoot = (mode == Mode::PickFirmware || mode == Mode::Manager);
+  const char* backLabel = atRoot ? (exitsAtRoot ? tr(STR_BACK) : tr(STR_HOME)) : tr(STR_BACK);
   // In PickFirmware mode, Confirm on a .bin returns the path to the caller (not "open"); show
   // STR_SELECT instead. Directories in the same picker still descend, so keep STR_OPEN there.
   const bool selectingFirmwareFile = mode == Mode::PickFirmware && !files.empty() && files[selectorIndex].back() != '/';
-  const char* confirmLabel = files.empty() ? "" : (selectingFirmwareFile ? tr(STR_SELECT) : tr(STR_OPEN));
+  // The file manager lists every file, but only book formats can actually be opened.
+  const bool managerNonOpenable = mode == Mode::Manager && !files.empty() &&
+                                  files[selectorIndex].back() != '/' && !isReaderOpenable(files[selectorIndex]);
+  const char* confirmLabel =
+      (files.empty() || managerNonOpenable) ? "" : (selectingFirmwareFile ? tr(STR_SELECT) : tr(STR_OPEN));
   const auto labels = mappedInput.mapLabels(backLabel, confirmLabel, files.empty() ? "" : tr(STR_DIR_UP),
                                             files.empty() ? "" : tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

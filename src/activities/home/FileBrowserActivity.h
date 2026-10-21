@@ -11,8 +11,11 @@
 
 class FileBrowserActivity final : public Activity {
  public:
-  // Books = standard reader browser; PickFirmware = filter to .bin only and return path via ActivityResult.
-  enum class Mode { Books, PickFirmware };
+  // Books       = standard reader browser, rooted at /book, filtered to book formats.
+  // PickFirmware = filter to .bin only and return path via ActivityResult.
+  // Manager     = file manager app: every file and folder on the card, rooted at
+  //               "/", with delete/rename-free browsing (delete via long press).
+  enum class Mode { Books, PickFirmware, Manager };
 
  private:
   // Deletion
