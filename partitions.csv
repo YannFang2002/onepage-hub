@@ -1,7 +1,16 @@
-# Name,   Type, SubType, Offset,  Size, Flags
-nvs,      data, nvs,     0x9000,  0x5000,
-otadata,  data, ota,     0xe000,  0x2000,
-app0,     app,  ota_0,   0x10000, 0x640000,
-app1,     app,  ota_1,   0x650000,0x640000,
-spiffs,   data, spiffs,  0xc90000,0x360000,
-coredump, data, coredump,0xFF0000,0x10000,
+# Name,   Type, SubType, Offset,   Size,    Flags
+# 16 MB flash, dual-OTA layout.
+#
+# There is no spiffs/LittleFS partition: all bulk storage lives on the SD card
+# (SdFat/FAT32) and settings live in NVS + /system/.crosspoint/*.json, so nothing
+# in this firmware links esp_spiffs. The 3.375 MB it used to reserve is folded
+# into the two OTA slots instead, which buys ~1.7 MB per slot and keeps headroom
+# for future features (the image was at 86% of a 6.25 MB slot).
+#
+# Both app slots must stay 64 KB aligned; app1 starts immediately after app0 so
+# the whole span from 0x10000 to coredump is usable.
+nvs,      data, nvs,      0x9000,   0x5000,
+otadata,  data, ota,      0xe000,   0x2000,
+app0,     app,  ota_0,    0x10000,  0x7F0000,
+app1,     app,  ota_1,    0x800000, 0x7F0000,
+coredump, data, coredump, 0xFF0000, 0x10000,
