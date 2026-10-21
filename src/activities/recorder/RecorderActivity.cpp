@@ -16,6 +16,12 @@ namespace {
 
 constexpr char kRecordingsDir[] = "/record";
 
+// If the microphone produces nothing at all for this long after capture starts,
+// report a microphone fault instead of letting the user record into the void and
+// then hear "recording too short". A healthy PDM stream yields samples within
+// a few milliseconds, so this only ever fires on a real failure.
+constexpr uint32_t kNoDataTimeoutMs = 3000;
+
 void writeLe16(uint8_t* p, uint16_t v) {
   p[0] = static_cast<uint8_t>(v & 0xFF);
   p[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
@@ -70,6 +76,12 @@ void RecorderActivity::onEnter() {
   message_[0] = '\0';
   durationSec_ = 0;
   micReady_ = false;
+  captureFailed_ = false;
+  // Recordings live in /record at the root of the SD card, alongside /book and
+  // /system. Create it up front so the folder exists even before the first clip.
+  if (Storage.ready()) {
+    Storage.ensureDirectoryExists(kRecordingsDir);
+  }
   requestUpdate();
 }
 
@@ -87,13 +99,20 @@ void RecorderActivity::taskTrampoline(void* arg) {
 }
 
 void RecorderActivity::captureTask() {
+  const uint32_t startedAt = millis();
   while (!stopRequested_ && sampleCount_ < kMaxSamples) {
     const int samples = mic_.read(chunk_, kChunkSamples, 50);
     if (samples < 0) {
       LOG_ERR("REC", "mic read failed");
+      captureFailed_ = true;
       break;
     }
     if (samples == 0) {
+      if (sampleCount_ == 0 && millis() - startedAt >= kNoDataTimeoutMs) {
+        LOG_ERR("REC", "no microphone data within %u ms", static_cast<unsigned>(kNoDataTimeoutMs));
+        captureFailed_ = true;
+        break;
+      }
       continue;
     }
     const size_t remaining = kMaxSamples - sampleCount_;
@@ -148,6 +167,7 @@ bool RecorderActivity::startRecording() {
   filePath_[0] = '\0';
   stopRequested_ = false;
   taskDone_ = false;
+  captureFailed_ = false;
 
   if (!mic_.start()) {
     setError(tr(STR_RECORDER_MIC_FAIL));
@@ -189,8 +209,15 @@ void RecorderActivity::finalizeRecording() {
   requestStop();
 
   if (sampleCount_ < static_cast<size_t>(PdmMic::kSampleRate) / 2) {
+    const bool micFailed = captureFailed_;
     freeBuffer();
-    setError(tr(STR_RECORDER_TOO_SHORT));
+    // tr() is a macro taking a bare StrId token, so the choice cannot be inlined
+    // into a single call.
+    if (micFailed) {
+      setError(tr(STR_RECORDER_MIC_FAIL));
+    } else {
+      setError(tr(STR_RECORDER_TOO_SHORT));
+    }
     return;
   }
 

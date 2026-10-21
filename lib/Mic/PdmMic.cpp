@@ -2,6 +2,7 @@
 
 #include <Logging.h>
 #include <driver/i2s_common.h>
+#include <soc/i2s_struct.h>
 
 namespace {
 constexpr int kPdmClkPin = 7;
@@ -51,7 +52,24 @@ bool PdmMic::begin() {
     return false;
   }
 
-  LOG_INF("MIC", "PDM mic ready (CLK=%d DIN=%d, %d Hz PCM)", kPdmClkPin, kPdmDinPin, kSampleRate);
+  // ESP32-C61 + ESP-IDF 5.5.x workaround: the C61 HAL ships
+  // i2s_ll_rx_enable_pdm() as a stub whose body is identical to
+  // i2s_ll_rx_enable_tdm() -- it CLEARS rx_pdm_en and SETS rx_tdm_en. The driver
+  // therefore leaves the peripheral in TDM RX mode, where no PDM bit clock is
+  // produced for the clk/din pair we configured, so i2s_channel_read() only ever
+  // returns ESP_ERR_TIMEOUT: no PCM is captured and every clip is reported as
+  // "too short" regardless of how long the user records.
+  // The working targets (esp32c6 / esp32s3 HAL) set rx_pdm_en = true and
+  // rx_tdm_en = false in exactly this spot. rx_pdm_en is a plain R/W bit
+  // (i2s_struct.h, rx_conf bit 20) that applies immediately, and
+  // i2s_channel_enable() only latches the remaining rx_conf fields via
+  // i2s_ll_rx_update(), so writing it here mirrors upstream init order.
+  // Remove once the toolchain moves to ESP-IDF >= 6.1.
+  I2S0.rx_conf.rx_pdm_en = 1;
+  I2S0.rx_conf.rx_tdm_en = 0;
+
+  LOG_INF("MIC", "PDM mic ready (CLK=%d DIN=%d, %d Hz PCM, rx_pdm_en=%u)", kPdmClkPin, kPdmDinPin, kSampleRate,
+          static_cast<unsigned>(I2S0.rx_conf.rx_pdm_en));
   return true;
 }
 
@@ -97,10 +115,13 @@ int PdmMic::read(int16_t* out, size_t maxSamples, uint32_t timeoutMs) {
   size_t bytesRead = 0;
   const esp_err_t err = i2s_channel_read(rx_, raw_, sizeof(raw_), &bytesRead, timeoutMs);
   if (err == ESP_ERR_TIMEOUT) {
-    return 0;
+    return 0;  // no data yet; the caller keeps waiting
   }
   if (err != ESP_OK) {
-    return 0;
+    // Do not fold real errors into "no data": a stuck channel would otherwise be
+    // indistinguishable from a quiet microphone.
+    LOG_ERR("MIC", "i2s_channel_read failed: %s", esp_err_to_name(err));
+    return -1;
   }
   if (bytesRead == 0) {
     return 0;
