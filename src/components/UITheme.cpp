@@ -10,6 +10,7 @@
 #include "RecentBooksStore.h"
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
+#include "components/icons/agent32.h"
 #include "components/icons/bookmark.h"
 #include "components/icons/file24.h"
 #include "components/icons/folder.h"
@@ -210,6 +211,8 @@ const uint8_t* UITheme::getIconBitmap(const UIIcon icon, const int size) {
         return BookmarkIcon;
       case Mic:
         return MicIcon;
+      case Agent:
+        return AgentIcon;
       default:
         return nullptr;
     }
