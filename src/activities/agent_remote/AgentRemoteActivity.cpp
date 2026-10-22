@@ -54,6 +54,51 @@ void trimTrailingSpaces(std::string& text) {
   }
 }
 
+// Maps the host's agent state onto a word a person can read at a glance, instead
+// of echoing the raw protocol value ("idle"/"running"/"error").
+const char* agentStateText(const std::string& state) {
+  if (state == "running") {
+    return tr(STR_AGENT_RUNNING);
+  }
+  if (state == "idle") {
+    return tr(STR_AGENT_IDLE);
+  }
+  if (state == "error") {
+    return tr(STR_AGENT_ERROR);
+  }
+  return tr(STR_AGENT_UNKNOWN);
+}
+
+// The panel cannot render Markdown and a full agent reply never fits on a
+// 480x800 e-ink page, so only the first sentence is shown: drop Markdown
+// markers, collapse whitespace, then cut at the first sentence terminator.
+std::string summarizeReply(const std::string& raw) {
+  std::string cleaned;
+  cleaned.reserve(raw.size());
+  bool lastWasSpace = true;
+  for (const char c : raw) {
+    if (c == '*' || c == '`' || c == '#' || c == '_' || c == '~') {
+      continue;  // Markdown emphasis/code markers
+    }
+    const bool space = c == '\n' || c == '\r' || c == '\t' || c == ' ';
+    if (space) {
+      if (!lastWasSpace && !cleaned.empty()) {
+        cleaned.push_back(' ');
+      }
+      lastWasSpace = true;
+      continue;
+    }
+    cleaned.push_back(c);
+    lastWasSpace = false;
+  }
+
+  const size_t end = cleaned.find_first_of("。！？!?");
+  if (end != std::string::npos) {
+    cleaned.resize(end + 1);
+  }
+  return cleaned;
+}
+
 // Wraps `text` to `maxWidth` using `fontId`.
 //
 // GfxRenderer::wrappedText() only breaks on ASCII spaces, which is fine for the
@@ -775,53 +820,76 @@ void AgentRemoteActivity::render(RenderLock&&) {
   }
 
   char line[192];
-  const std::string hostValue = configured_ ? config_.baseUrl : tr(STR_AGENT_NOT_CONFIGURED);
-  const std::string hostLine = std::string(tr(STR_AGENT_HOST)) + ": " + hostValue;
-  const std::string shownHost = renderer.truncatedText(UI_10_FONT_ID, hostLine.c_str(), contentWidth);
-  renderer.drawText(UI_10_FONT_ID, left, y, shownHost.c_str());
-  y += lineHeight + 6;
+  const bool wifiOk = WiFi.status() == WL_CONNECTED;
+  const int hintTop = renderer.getScreenHeight() - metrics.buttonHintsHeight - 8;
 
-  const char* connection;
-  if (!configured_) {
-    connection = tr(STR_AGENT_NOT_CONFIGURED);
-  } else if (wifiConnecting_) {
-    connection = tr(STR_AGENT_WIFI_CONNECTING);
-  } else if (WiFi.status() != WL_CONNECTED) {
-    connection = tr(STR_AGENT_WIFI_REQUIRED);
-  } else {
-    connection = status_.ok ? tr(STR_AGENT_CONNECTED) : tr(STR_AGENT_DISCONNECTED);
-  }
-  snprintf(line, sizeof(line), "%s: %s", tr(STR_AGENT_STATUS), connection);
+  // Section 1 — link. WiFi and the host link fail independently (wrong SSID vs.
+  // host asleep / bridge down), so they get separate rows; the old single
+  // "Status" line blended them with the agent's own state.
+  renderer.drawText(SMALL_FONT_ID, left, y, tr(STR_AGENT_LINK));
+  y += lineHeight + 2;
+
+  snprintf(line, sizeof(line), "  WiFi   %s", wifiOk ? tr(STR_AGENT_CONNECTED) : tr(STR_AGENT_WIFI_REQUIRED));
   renderer.drawText(UI_10_FONT_ID, left, y, line);
-  y += lineHeight + 6;
+  y += lineHeight;
 
-  if (configured_ && status_.ok) {
-    snprintf(line, sizeof(line), "%s: %s", tr(STR_AGENT_AGENT),
-             status_.agent.empty() ? "DSH" : status_.agent.c_str());
-    renderer.drawText(UI_10_FONT_ID, left, y, line);
-    y += lineHeight + 4;
-    if (!status_.repo.empty()) {
-      snprintf(line, sizeof(line), "%s: %s", tr(STR_AGENT_REPO), status_.repo.c_str());
-      renderer.drawText(UI_10_FONT_ID, left, y, line);
-      y += lineHeight + 4;
-    }
-    if (!status_.state.empty()) {
-      snprintf(line, sizeof(line), "%s: %s", tr(STR_AGENT_STATE), status_.state.c_str());
-      renderer.drawText(UI_10_FONT_ID, left, y, line);
-      y += lineHeight + 4;
-    }
+  const char* hostState;
+  if (!configured_) {
+    hostState = tr(STR_AGENT_NOT_CONFIGURED);
+  } else if (wifiConnecting_) {
+    hostState = tr(STR_AGENT_WIFI_CONNECTING);
+  } else if (!wifiOk) {
+    hostState = tr(STR_AGENT_WIFI_REQUIRED);
+  } else {
+    hostState = status_.ok ? tr(STR_AGENT_CONNECTED) : tr(STR_AGENT_DISCONNECTED);
   }
 
-  y += 10;
+  std::string hostRow = std::string("  ") + tr(STR_AGENT_HOST) + "   " + hostState;
+  if (configured_ && status_.ok) {
+    const std::string& url = config_.baseUrl;
+    const size_t scheme = url.find("://");
+    hostRow += " · ";
+    hostRow += (scheme == std::string::npos) ? url : url.substr(scheme + 3);
+  }
+  {
+    const std::string shown = renderer.truncatedText(UI_10_FONT_ID, hostRow.c_str(), contentWidth);
+    renderer.drawText(UI_10_FONT_ID, left, y, shown.c_str());
+  }
+  y += lineHeight + 10;
+
+  // Section 2 — what the agent itself is doing (independent of the link).
   renderer.drawLine(left, y, width - left, y, 1, true);
-  y += 16;
-  renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_AGENT_LAST_REPLY));
+  y += 12;
+  renderer.drawText(SMALL_FONT_ID, left, y, tr(STR_AGENT_AGENT));
+  y += lineHeight + 2;
+
+  std::string who = std::string("  ") + (status_.agent.empty() ? "DSH" : status_.agent.c_str());
+  if (status_.ok && !status_.repo.empty()) {
+    who += " · " + status_.repo;
+  }
+  {
+    const std::string shown = renderer.truncatedText(UI_10_FONT_ID, who.c_str(), contentWidth);
+    renderer.drawText(UI_10_FONT_ID, left, y, shown.c_str());
+  }
+  y += lineHeight;
+
+  snprintf(line, sizeof(line), "  %s   %s", tr(STR_AGENT_STATE),
+           status_.ok ? agentStateText(status_.state) : tr(STR_AGENT_UNKNOWN));
+  renderer.drawText(UI_10_FONT_ID, left, y, line);
+  y += lineHeight + 10;
+
+  // Section 3 — the reply. Markdown cannot be rendered here and a full answer
+  // never fits, so the first sentence is the contract: the host trims it, and
+  // summarizeReply() enforces it again on the device.
+  renderer.drawLine(left, y, width - left, y, 1, true);
+  y += 12;
+  renderer.drawText(SMALL_FONT_ID, left, y, tr(STR_AGENT_LAST_REPLY));
   y += lineHeight + 4;
 
-  const std::string& reply = !lastReply_.empty() ? lastReply_ : status_.lastReply;
-  const int hintTop = renderer.getScreenHeight() - metrics.buttonHintsHeight - 8;
+  const std::string rawReply = !lastReply_.empty() ? lastReply_ : status_.lastReply;
+  const std::string reply = summarizeReply(rawReply);
   int maxReplyLines = (hintTop - y - lineHeight) / lineHeight;
-  maxReplyLines = std::max(1, std::min(4, maxReplyLines));
+  maxReplyLines = std::max(1, std::min(3, maxReplyLines));
   if (reply.empty()) {
     renderer.drawText(SMALL_FONT_ID, left, y, tr(STR_AGENT_NO_REPLY));
     y += lineHeight;
