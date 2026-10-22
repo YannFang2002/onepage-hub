@@ -995,11 +995,14 @@ void AgentRemoteActivity::render(RenderLock&&) {
     for (int i = 0; i < 2; ++i) {
       std::string row = (i == modeIndex_) ? "> " : "  ";
       row += items[i];
-      renderer.drawText(UI_12_FONT_ID, left, y, row.c_str(), true, EpdFontFamily::BOLD);
+      // Indentation ladder: title at 0, mode names at 8, descriptions at 28, so
+      // the three levels never look like peers.
+      renderer.drawText(UI_12_FONT_ID, left + 8, y, row.c_str(), true, EpdFontFamily::BOLD);
       y += titleHeight + 2;
-      const auto hint = wrapDisplayText(renderer, SMALL_FONT_ID, descriptions[i], contentWidth - 16, 2);
+      const auto hint =
+          wrapDisplayText(renderer, SMALL_FONT_ID, descriptions[i], contentWidth - 28, 2);
       for (const auto& text : hint) {
-        renderer.drawText(SMALL_FONT_ID, left + 16, y, text.c_str());
+        renderer.drawText(SMALL_FONT_ID, left + 28, y, text.c_str());
         y += renderer.getLineHeight(SMALL_FONT_ID);
       }
       y += 12;
