@@ -4,6 +4,8 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
+#include <algorithm>
+
 namespace {
 constexpr char kConfigDir[] = "/system/.crosspoint";
 constexpr char kConfigPath[] = "/system/.crosspoint/agent.json";
@@ -46,6 +48,7 @@ bool AgentConfig::load() {
   const String content = Storage.readFile(kConfigPath);
   if (content.isEmpty()) {
     baseUrl.clear();
+    hosts.clear();
     return false;
   }
 
@@ -53,10 +56,31 @@ bool AgentConfig::load() {
   if (deserializeJson(doc, content)) {
     LOG_ERR("AGENT", "agent.json parse failed");
     baseUrl.clear();
+    hosts.clear();
     return false;
   }
   baseUrl = normalizeBaseUrl(doc["baseUrl"] | "");
+
+  hosts.clear();
+  JsonArray saved = doc["hosts"].as<JsonArray>();
+  for (JsonVariant entry : saved) {
+    const std::string url = normalizeBaseUrl(entry | "");
+    if (!url.empty()) {
+      hosts.push_back(url);
+    }
+  }
   return !baseUrl.empty();
+}
+
+void AgentConfig::rememberHost(const std::string& url) {
+  if (url.empty()) {
+    return;
+  }
+  hosts.erase(std::remove(hosts.begin(), hosts.end(), url), hosts.end());
+  hosts.insert(hosts.begin(), url);
+  if (hosts.size() > 4) {
+    hosts.resize(4);
+  }
 }
 
 bool AgentConfig::save() const {
@@ -67,6 +91,10 @@ bool AgentConfig::save() const {
 
   JsonDocument doc;
   doc["baseUrl"] = baseUrl;
+  JsonArray saved = doc["hosts"].to<JsonArray>();
+  for (const auto& host : hosts) {
+    saved.add(host);
+  }
   String out;
   serializeJson(doc, out);
   if (!Storage.writeFile(kConfigPath, out)) {

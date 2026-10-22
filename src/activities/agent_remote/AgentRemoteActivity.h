@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "activities/Activity.h"
 #include "agent/AgentConfig.h"
@@ -30,6 +31,17 @@ class AgentRemoteActivity final : public Activity {
 
   Mode mode_ = Mode::Choose;
   int modeIndex_ = 0;
+
+  // Status-page menu: WiFi, saved hosts, manual address, rediscover, refresh.
+  enum class MenuAction { Wifi, Host, Manual, Discover, Refresh };
+  struct MenuItem {
+    MenuAction action;
+    std::string label;
+    std::string host;
+  };
+  bool menu_ = false;
+  int menuIndex_ = 0;
+  std::vector<MenuItem> menuItems_;
 
   AgentConfig config_;
   AgentStatus status_;
@@ -61,6 +73,10 @@ class AgentRemoteActivity final : public Activity {
   bool waitForNetwork();
   // Everything the agent mode needs on entry: config, network, discovery/poll.
   void enterAgentMode();
+  // Build the status-page menu from the saved hosts and refresh selection.
+  void openMenu();
+  // Execute the highlighted menu entry.
+  void runMenuItem();
   void startWifiSetup();
   void refreshStatus();
   // Light periodic poll: short timeout, redraws only when something changed.

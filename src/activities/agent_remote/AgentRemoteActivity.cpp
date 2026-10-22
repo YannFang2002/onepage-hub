@@ -562,6 +562,7 @@ bool AgentRemoteActivity::discoverHost() {
     return false;
   }
 
+  config_.rememberHost(config_.baseUrl);
   if (!config_.save()) {
     error_ = tr(STR_AGENT_SAVE_FAILED);
     requestUpdate();
@@ -681,6 +682,7 @@ void AgentRemoteActivity::startHostInput() {
 
 void AgentRemoteActivity::applyHost(const std::string& input) {
   config_.baseUrl = AgentConfig::normalizeBaseUrl(input);
+  config_.rememberHost(config_.baseUrl);
   if (!config_.save()) {
     error_ = tr(STR_AGENT_SAVE_FAILED);
     configured_ = false;
@@ -696,6 +698,49 @@ void AgentRemoteActivity::applyHost(const std::string& input) {
     refreshStatus();
   } else {
     requestUpdate();
+  }
+}
+
+void AgentRemoteActivity::openMenu() {
+  menuItems_.clear();
+  menuIndex_ = 0;
+  menu_ = true;
+
+  menuItems_.push_back({MenuAction::Wifi, tr(STR_AGENT_MENU_WIFI), {}});
+  for (const auto& host : config_.hosts) {
+    menuItems_.push_back({MenuAction::Host, std::string(tr(STR_AGENT_HOST)) + "  " + host, host});
+  }
+  menuItems_.push_back({MenuAction::Manual, tr(STR_AGENT_MENU_MANUAL), {}});
+  menuItems_.push_back({MenuAction::Discover, tr(STR_AGENT_MENU_DISCOVER), {}});
+  menuItems_.push_back({MenuAction::Refresh, tr(STR_AGENT_MENU_REFRESH), {}});
+  requestUpdate();
+}
+
+void AgentRemoteActivity::runMenuItem() {
+  if (menuIndex_ < 0 || menuIndex_ >= static_cast<int>(menuItems_.size())) {
+    menu_ = false;
+    requestUpdate();
+    return;
+  }
+  const MenuItem item = menuItems_[menuIndex_];
+  menu_ = false;
+  switch (item.action) {
+    case MenuAction::Wifi:
+      startWifiSetup();
+      break;
+    case MenuAction::Host:
+      applyHost(item.host);
+      break;
+    case MenuAction::Manual:
+      startHostInput();
+      break;
+    case MenuAction::Discover:
+      discoveryTried_ = false;
+      discoverHost();
+      break;
+    case MenuAction::Refresh:
+      refreshStatus();
+      break;
   }
 }
 
@@ -796,6 +841,27 @@ void AgentRemoteActivity::loop() {
     return;
   }
 
+  if (menu_) {
+    const int count = static_cast<int>(menuItems_.size());
+    if (mappedInput.wasPressed(MappedInputManager::Button::Up) && menuIndex_ > 0) {
+      --menuIndex_;
+      requestUpdate();
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Down) && menuIndex_ + 1 < count) {
+      ++menuIndex_;
+      requestUpdate();
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      runMenuItem();
+      return;
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      menu_ = false;
+      requestUpdate();
+    }
+    return;
+  }
+
   if (wifiConnecting_) {
     if (WiFi.status() == WL_CONNECTED) {
       wifiConnecting_ = false;
@@ -888,7 +954,7 @@ void AgentRemoteActivity::loop() {
     return;
   }
   if (mappedInput.wasPressed(MappedInputManager::Button::Left)) {
-    startHostInput();
+    openMenu();
     return;
   }
   if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
@@ -954,6 +1020,44 @@ void AgentRemoteActivity::render(RenderLock&&) {
     }
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
+
+  if (menu_) {
+    const int titleHeight = renderer.getLineHeight(UI_12_FONT_ID);
+    renderer.drawText(UI_12_FONT_ID, left, y, tr(STR_AGENT_MENU), true, EpdFontFamily::BOLD);
+    y += titleHeight + 12;
+
+    const int rowHeight = renderer.getLineHeight(UI_10_FONT_ID) + 12;
+    const int bottom = renderer.getScreenHeight() - metrics.buttonHintsHeight - 8;
+    int visible = (bottom - y) / rowHeight;
+    if (visible < 1) {
+      visible = 1;
+    }
+    const int count = static_cast<int>(menuItems_.size());
+    int first = menuIndex_ - visible + 1;
+    if (first > count - visible) {
+      first = count - visible;
+    }
+    if (first < 0) {
+      first = 0;
+    }
+
+    for (int i = first; i < count && i < first + visible; ++i) {
+      const auto& item = menuItems_[i];
+      std::string row = (i == menuIndex_) ? "> " : "  ";
+      if (item.action == MenuAction::Host && item.host == config_.baseUrl) {
+        row += "* ";  // host currently in use
+      }
+      row += item.label;
+      const std::string shown = renderer.truncatedText(UI_10_FONT_ID, row.c_str(), contentWidth);
+      renderer.drawText(UI_10_FONT_ID, left, y, shown.c_str());
+      y += rowHeight;
+    }
+
+    const auto menuLabels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
+    GUI.drawButtonHints(renderer, menuLabels.btn1, menuLabels.btn2, menuLabels.btn3, menuLabels.btn4);
     renderer.displayBuffer();
     return;
   }
@@ -1128,7 +1232,7 @@ void AgentRemoteActivity::render(RenderLock&&) {
   } else {
     confirmLabel = tr(STR_AGENT_WIFI_SETUP);
   }
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_AGENT_SETTINGS),
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), confirmLabel, tr(STR_AGENT_MENU),
                                             tr(STR_AGENT_REFRESH));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 
