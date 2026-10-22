@@ -36,3 +36,8 @@ lib/EpdFont/scripts/output/
 
 # Agent Remote host-side code lives in its own repository.
 /tools/
+
+# local build/flash logs
+build.log
+flash*.log
+serial.log

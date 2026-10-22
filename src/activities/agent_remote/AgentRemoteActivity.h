@@ -43,6 +43,9 @@ class AgentRemoteActivity final : public Activity {
   unsigned long wifiStartMs_ = 0;
   unsigned long recordStartMs_ = 0;
   unsigned long lastRecordUiMs_ = 0;
+  // Last liveness ping. The host marks the device offline when this stops
+  // arriving (app closed, WiFi off, deep sleep).
+  unsigned long lastHeartbeatMs_ = 0;
 
   bool ensureNetwork();
   bool waitForNetwork();

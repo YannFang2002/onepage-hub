@@ -173,6 +173,18 @@ bool postBody(const std::string& url, const char* contentType, const std::string
 
 }  // namespace
 
+bool AgentClient::heartbeat(const std::string& baseUrl) {
+  const std::string url = endpoint(baseUrl, "/api/v1/heartbeat");
+  if (url.empty()) {
+    return false;
+  }
+  std::string response;
+  std::string error;
+  // 2 s cap: this runs from the UI loop, so it must never hold the frame for
+  // long when the host has gone away.
+  return getBody(url, response, error, 2000) && response.find("\"ok\"") != std::string::npos;
+}
+
 bool AgentClient::fetchStatus(const std::string& baseUrl, AgentStatus& out, std::string& error) {
   out = {};
   error.clear();

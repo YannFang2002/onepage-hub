@@ -643,6 +643,15 @@ void AgentRemoteActivity::loop() {
     return;
   }
 
+  // Liveness: while this app is open the host keeps a "device online" timer that
+  // expires after 60 s. A sleeping or closed device simply stops pinging, which
+  // is what makes the host stop showing a stale address as connected.
+  if (configured_ && !recording_ && !transcribing_ && WiFi.status() == WL_CONNECTED &&
+      millis() - lastHeartbeatMs_ >= 20000) {
+    lastHeartbeatMs_ = millis();
+    AgentClient::heartbeat(config_.baseUrl);
+  }
+
   if (preview_) {
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       sendMessage(transcript_);
