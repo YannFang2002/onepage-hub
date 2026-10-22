@@ -24,6 +24,13 @@ class AgentRemoteActivity final : public Activity {
   bool skipLoopDelay() override { return recording_ || transcribing_ || discovering_; }
 
  private:
+  // The app has two jobs now: talk to the host's agent (with a screen), or act
+  // as a wireless microphone. The chooser runs on every entry.
+  enum class Mode { Choose, Agent, Microphone };
+
+  Mode mode_ = Mode::Choose;
+  int modeIndex_ = 0;
+
   AgentConfig config_;
   AgentStatus status_;
   VoiceCapture voice_;
@@ -52,6 +59,8 @@ class AgentRemoteActivity final : public Activity {
 
   bool ensureNetwork();
   bool waitForNetwork();
+  // Everything the agent mode needs on entry: config, network, discovery/poll.
+  void enterAgentMode();
   void startWifiSetup();
   void refreshStatus();
   // Light periodic poll: short timeout, redraws only when something changed.

@@ -245,6 +245,23 @@ std::vector<std::string> wrapDisplayText(const GfxRenderer& renderer, const int 
 
 void AgentRemoteActivity::onEnter() {
   Activity::onEnter();
+  // Always start at the mode chooser: "talk to the agent" and "be a wireless
+  // microphone" are different jobs and the user picks per session.
+  mode_ = Mode::Choose;
+  modeIndex_ = 0;
+  lastReply_.clear();
+  error_.clear();
+  transcript_.clear();
+  recording_ = false;
+  transcribing_ = false;
+  preview_ = false;
+  discovering_ = false;
+  discoveryTried_ = false;
+  wifiConnecting_ = false;
+  requestUpdate();
+}
+
+void AgentRemoteActivity::enterAgentMode() {
   config_.load();
   configured_ = !config_.baseUrl.empty();
   lastReply_.clear();
@@ -743,6 +760,42 @@ void AgentRemoteActivity::pollStatus() {
 }
 
 void AgentRemoteActivity::loop() {
+  // Mode chooser: the two modes share nothing below, so keep it explicit.
+  if (mode_ == Mode::Choose) {
+    if (mappedInput.wasPressed(MappedInputManager::Button::Up) && modeIndex_ != 0) {
+      modeIndex_ = 0;
+      requestUpdate();
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Down) && modeIndex_ != 1) {
+      modeIndex_ = 1;
+      requestUpdate();
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
+      if (modeIndex_ == 0) {
+        mode_ = Mode::Agent;
+        enterAgentMode();
+      } else {
+        mode_ = Mode::Microphone;
+        requestUpdate();
+      }
+      return;
+    }
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      finish();
+    }
+    return;
+  }
+
+  if (mode_ == Mode::Microphone) {
+    // Placeholder: the transport (device -> virtual audio device on the host) is
+    // not implemented yet, so the screen only explains itself.
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      mode_ = Mode::Choose;
+      requestUpdate();
+    }
+    return;
+  }
+
   if (wifiConnecting_) {
     if (WiFi.status() == WL_CONNECTED) {
       wifiConnecting_ = false;
@@ -863,6 +916,43 @@ void AgentRemoteActivity::render(RenderLock&&) {
   const int contentWidth = width - left * 2;
   const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   int y = metrics.topPadding + metrics.headerHeight + 24;
+
+  if (mode_ == Mode::Choose) {
+    renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_AGENT_MODE_TITLE));
+    y += lineHeight + 10;
+    const char* items[2] = {tr(STR_AGENT_MODE_TALK), tr(STR_AGENT_MODE_MIC)};
+    const char* descriptions[2] = {tr(STR_AGENT_MODE_TALK_DESC), tr(STR_AGENT_MODE_MIC_DESC)};
+    for (int i = 0; i < 2; ++i) {
+      std::string row = (i == modeIndex_) ? "> " : "  ";
+      row += items[i];
+      renderer.drawText(UI_10_FONT_ID, left, y, row.c_str());
+      y += lineHeight + 2;
+      const auto hint = wrapDisplayText(renderer, SMALL_FONT_ID, descriptions[i], contentWidth - 16, 2);
+      for (const auto& text : hint) {
+        renderer.drawText(SMALL_FONT_ID, left + 16, y, text.c_str());
+        y += renderer.getLineHeight(SMALL_FONT_ID);
+      }
+      y += 10;
+    }
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
+
+  if (mode_ == Mode::Microphone) {
+    renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_AGENT_MODE_MIC));
+    y += lineHeight + 8;
+    const auto body = wrapDisplayText(renderer, UI_10_FONT_ID, tr(STR_AGENT_MODE_MIC_TODO), contentWidth, 6);
+    for (const auto& text : body) {
+      renderer.drawText(UI_10_FONT_ID, left, y, text.c_str());
+      y += lineHeight;
+    }
+    const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
+    GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+    renderer.displayBuffer();
+    return;
+  }
 
   if (recording_) {
     renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_AGENT_RECORDING));
