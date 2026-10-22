@@ -807,12 +807,14 @@ void AgentRemoteActivity::pollStatus() {
 void AgentRemoteActivity::loop() {
   // Mode chooser: the two modes share nothing below, so keep it explicit.
   if (mode_ == Mode::Choose) {
-    if (mappedInput.wasPressed(MappedInputManager::Button::Up) && modeIndex_ != 0) {
-      modeIndex_ = 0;
+    // Wrapping navigation: Up on the first entry lands on the last one (and Down
+    // on the last wraps back), so the list never feels stuck.
+    if (mappedInput.wasPressed(MappedInputManager::Button::Up) && modeIndex_ != 1) {
+      modeIndex_ = 1;
       requestUpdate();
     }
-    if (mappedInput.wasPressed(MappedInputManager::Button::Down) && modeIndex_ != 1) {
-      modeIndex_ = 1;
+    if (mappedInput.wasPressed(MappedInputManager::Button::Down) && modeIndex_ != 0) {
+      modeIndex_ = 0;
       requestUpdate();
     }
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
@@ -843,13 +845,16 @@ void AgentRemoteActivity::loop() {
 
   if (menu_) {
     const int count = static_cast<int>(menuItems_.size());
-    if (mappedInput.wasPressed(MappedInputManager::Button::Up) && menuIndex_ > 0) {
-      --menuIndex_;
-      requestUpdate();
-    }
-    if (mappedInput.wasPressed(MappedInputManager::Button::Down) && menuIndex_ + 1 < count) {
-      ++menuIndex_;
-      requestUpdate();
+    if (count > 0) {
+      // Wrapping navigation, same rule as the mode chooser.
+      if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
+        menuIndex_ = (menuIndex_ - 1 + count) % count;
+        requestUpdate();
+      }
+      if (mappedInput.wasPressed(MappedInputManager::Button::Down)) {
+        menuIndex_ = (menuIndex_ + 1) % count;
+        requestUpdate();
+      }
     }
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
       runMenuItem();
