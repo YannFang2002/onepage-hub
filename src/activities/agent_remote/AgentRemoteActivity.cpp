@@ -1000,9 +1000,9 @@ void AgentRemoteActivity::render(RenderLock&&) {
       renderer.drawText(UI_12_FONT_ID, left + 8, y, row.c_str(), true, EpdFontFamily::BOLD);
       y += titleHeight + 2;
       const auto hint =
-          wrapDisplayText(renderer, SMALL_FONT_ID, descriptions[i], contentWidth - 28, 2);
+          wrapDisplayText(renderer, SMALL_FONT_ID, descriptions[i], contentWidth - 40, 2);
       for (const auto& text : hint) {
-        renderer.drawText(SMALL_FONT_ID, left + 28, y, text.c_str());
+        renderer.drawText(SMALL_FONT_ID, left + 40, y, text.c_str());
         y += renderer.getLineHeight(SMALL_FONT_ID);
       }
       y += 12;
