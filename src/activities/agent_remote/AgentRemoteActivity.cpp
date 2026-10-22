@@ -280,6 +280,12 @@ void AgentRemoteActivity::onExit() {
 bool AgentRemoteActivity::ensureNetwork() {
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnecting_ = false;
+    // A stale "connecting WiFi" line used to survive a successful (re)connect,
+    // because only the connecting branch ever cleared it.
+    if (error_ == tr(STR_AGENT_WIFI_CONNECTING)) {
+      error_.clear();
+      requestUpdate();
+    }
     return true;
   }
 
@@ -759,6 +765,14 @@ void AgentRemoteActivity::loop() {
     return;
   }
 
+  // If WiFi came up on its own (stored credentials, background reconnect), drop
+  // the stale "connecting WiFi" note that the preview page would otherwise keep
+  // showing below the transcript.
+  if (!wifiConnecting_ && WiFi.status() == WL_CONNECTED && error_ == tr(STR_AGENT_WIFI_CONNECTING)) {
+    error_.clear();
+    requestUpdate();
+  }
+
   // Liveness: while this app is open the host keeps a "device online" timer that
   // expires after 60 s. A sleeping or closed device simply stops pinging, which
   // is what makes the host stop showing a stale address as connected.
@@ -908,8 +922,21 @@ void AgentRemoteActivity::render(RenderLock&&) {
   renderer.drawText(SMALL_FONT_ID, left, y, tr(STR_AGENT_LINK));
   y += lineHeight + 2;
 
-  snprintf(line, sizeof(line), "  WiFi   %s", wifiOk ? tr(STR_AGENT_CONNECTED) : tr(STR_AGENT_WIFI_REQUIRED));
-  renderer.drawText(UI_10_FONT_ID, left, y, line);
+  // WiFi row: state plus the SSID we are actually on, so "connected" is
+  // verifiable at a glance (wrong network is a common failure).
+  std::string wifiRow = std::string("  WiFi   ") +
+                        (wifiOk ? tr(STR_AGENT_CONNECTED) : tr(STR_AGENT_WIFI_REQUIRED));
+  if (wifiOk) {
+    const std::string ssid = WiFi.SSID().c_str();
+    if (!ssid.empty()) {
+      wifiRow += " · ";
+      wifiRow += ssid;
+    }
+  }
+  {
+    const std::string shown = renderer.truncatedText(UI_10_FONT_ID, wifiRow.c_str(), contentWidth);
+    renderer.drawText(UI_10_FONT_ID, left, y, shown.c_str());
+  }
   y += lineHeight;
 
   const char* hostState;
