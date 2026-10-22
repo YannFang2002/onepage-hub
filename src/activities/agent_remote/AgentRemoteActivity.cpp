@@ -201,6 +201,7 @@ std::vector<std::string> wrapDisplayText(const GfxRenderer& renderer, const int 
 
     if (cursor >= source.size()) {
       lines.push_back(line);  // the remainder fit on this line
+      pos = source.size();    // mark it consumed, or the tail gets appended twice below
       break;
     }
 
