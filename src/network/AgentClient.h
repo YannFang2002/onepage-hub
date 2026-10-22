@@ -16,7 +16,10 @@ struct AgentStatus {
 // GET  {baseUrl}/api/v1/heartbeat
 class AgentClient {
  public:
-  static bool fetchStatus(const std::string& baseUrl, AgentStatus& out, std::string& error);
+  // timeoutMs: the periodic status poll uses a shorter cap than a user-triggered
+  // refresh so a sleeping host cannot stall the UI loop.
+  static bool fetchStatus(const std::string& baseUrl, AgentStatus& out, std::string& error,
+                          int timeoutMs = 8000);
   static bool sendText(const std::string& baseUrl, const std::string& text, std::string& reply, std::string& error);
   static bool transcribe(const std::string& baseUrl, const std::string& wav, std::string& text, std::string& error);
   // Liveness ping. The host treats a device as online only while it keeps

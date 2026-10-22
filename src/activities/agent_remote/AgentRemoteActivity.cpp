@@ -54,6 +54,44 @@ void trimTrailingSpaces(std::string& text) {
   }
 }
 
+// Whisper occasionally emits the same short phrase twice ("测试一下测试一下",
+// "测试一下。测试一下。"), especially on very short clips. Collapse an exact
+// doubled payload so the preview and the text we send stay clean.
+//
+// Comparison drops spaces and punctuation (ASCII and CJK) but keeps ideographs:
+// a naive "skip any byte >= 0x80" would delete every Chinese character.
+std::string stripPunctuationForCompare(const std::string& text) {
+  std::string out;
+  out.reserve(text.size());
+  const unsigned char* cursor = reinterpret_cast<const unsigned char*>(text.c_str());
+  while (*cursor != 0) {
+    const unsigned char* start = cursor;
+    const uint32_t cp = utf8NextCodepoint(&cursor);
+    const bool asciiNoise =
+        cp == ' ' || cp == ',' || cp == '.' || cp == '!' || cp == '?' || cp == ';' || cp == ':';
+    const bool cjkPunct = (cp >= 0x3000 && cp <= 0x303F) || (cp >= 0xFF01 && cp <= 0xFF65);
+    if (asciiNoise || cjkPunct) {
+      continue;
+    }
+    out.append(reinterpret_cast<const char*>(start), static_cast<size_t>(cursor - start));
+  }
+  return out;
+}
+
+std::string collapseRepeatedPhrase(const std::string& text) {
+  const size_t length = text.size();
+  if (length < 6 || (length % 2) != 0) {
+    return text;
+  }
+  const size_t half = length / 2;
+  const std::string first = stripPunctuationForCompare(text.substr(0, half));
+  const std::string second = stripPunctuationForCompare(text.substr(half));
+  if (!first.empty() && first == second) {
+    return text.substr(0, half);
+  }
+  return text;
+}
+
 // Maps the host's agent state onto a word a person can read at a glance, instead
 // of echoing the raw protocol value ("idle"/"running"/"error").
 const char* agentStateText(const std::string& state) {
@@ -583,7 +621,7 @@ void AgentRemoteActivity::finishVoice() {
   std::string text;
   std::string err;
   if (AgentClient::transcribe(config_.baseUrl, wav, text, err)) {
-    transcript_ = text;
+    transcript_ = collapseRepeatedPhrase(text);
     preview_ = true;
   } else {
     error_ = friendlyError(err);
@@ -656,6 +694,9 @@ bool AgentRemoteActivity::sendMessage(const std::string& text) {
     status_.ok = true;
     preview_ = false;
     transcript_.clear();
+    // Poll on the next loop pass so "处理中" appears right away instead of
+    // waiting up to 5 s for the periodic tick.
+    lastStatusPollMs_ = 0;
   } else {
     error_ = friendlyError(err);
   }
@@ -663,6 +704,35 @@ bool AgentRemoteActivity::sendMessage(const std::string& text) {
   sending_ = false;
   requestUpdate();
   return ok;
+}
+
+// The status page used to fetch once on entry, so "空闲" could stay on screen
+// while the host was running a turn. Poll every few seconds instead, with a
+// short timeout, and refresh the panel only when something actually changed.
+void AgentRemoteActivity::pollStatus() {
+  if (!configured_) {
+    return;
+  }
+  AgentStatus next;
+  std::string err;
+  if (!AgentClient::fetchStatus(config_.baseUrl, next, err, 3000)) {
+    if (status_.ok) {
+      status_.ok = false;
+      error_ = err;
+      requestUpdate();
+    }
+    return;
+  }
+  if (next.ok == status_.ok && next.state == status_.state && next.agent == status_.agent &&
+      next.repo == status_.repo && next.lastReply == status_.lastReply) {
+    return;  // nothing changed: skip the e-ink refresh
+  }
+  status_ = next;
+  error_.clear();
+  if (!next.lastReply.empty()) {
+    lastReply_ = next.lastReply;
+  }
+  requestUpdate();
 }
 
 void AgentRemoteActivity::loop() {
@@ -695,6 +765,14 @@ void AgentRemoteActivity::loop() {
       millis() - lastHeartbeatMs_ >= 20000) {
     lastHeartbeatMs_ = millis();
     AgentClient::heartbeat(config_.baseUrl);
+  }
+
+  // Agent state is not pushed by the host, so the page has to ask. 5 s keeps
+  // "处理中" honest without hammering the panel (it only repaints on change).
+  if (configured_ && !recording_ && !transcribing_ && !sending_ && !preview_ && !loading_ &&
+      !discovering_ && WiFi.status() == WL_CONNECTED && millis() - lastStatusPollMs_ >= 5000) {
+    lastStatusPollMs_ = millis();
+    pollStatus();
   }
 
   if (preview_) {
@@ -839,7 +917,9 @@ void AgentRemoteActivity::render(RenderLock&&) {
   } else if (wifiConnecting_) {
     hostState = tr(STR_AGENT_WIFI_CONNECTING);
   } else if (!wifiOk) {
-    hostState = tr(STR_AGENT_WIFI_REQUIRED);
+    // Do NOT reuse the WiFi message here: the row above already says it, and two
+    // identical "connect WiFi" strings read like a rendering bug.
+    hostState = "-";
   } else {
     hostState = status_.ok ? tr(STR_AGENT_CONNECTED) : tr(STR_AGENT_DISCONNECTED);
   }

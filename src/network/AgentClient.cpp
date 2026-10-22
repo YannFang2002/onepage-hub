@@ -185,7 +185,8 @@ bool AgentClient::heartbeat(const std::string& baseUrl) {
   return getBody(url, response, error, 2000) && response.find("\"ok\"") != std::string::npos;
 }
 
-bool AgentClient::fetchStatus(const std::string& baseUrl, AgentStatus& out, std::string& error) {
+bool AgentClient::fetchStatus(const std::string& baseUrl, AgentStatus& out, std::string& error,
+                              int timeoutMs) {
   out = {};
   error.clear();
 
@@ -196,7 +197,7 @@ bool AgentClient::fetchStatus(const std::string& baseUrl, AgentStatus& out, std:
   }
 
   std::string content;
-  if (!getBody(url, content, error, kTimeoutMs)) {
+  if (!getBody(url, content, error, timeoutMs)) {
     return false;
   }
 

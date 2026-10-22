@@ -46,11 +46,16 @@ class AgentRemoteActivity final : public Activity {
   // Last liveness ping. The host marks the device offline when this stops
   // arriving (app closed, WiFi off, deep sleep).
   unsigned long lastHeartbeatMs_ = 0;
+  // Last status poll. The page used to fetch only on entry, so the agent state
+  // stayed stale ("空闲" while the host reported running).
+  unsigned long lastStatusPollMs_ = 0;
 
   bool ensureNetwork();
   bool waitForNetwork();
   void startWifiSetup();
   void refreshStatus();
+  // Light periodic poll: short timeout, redraws only when something changed.
+  void pollStatus();
   bool discoverHost();
   void announceHost();
   void startVoice();
