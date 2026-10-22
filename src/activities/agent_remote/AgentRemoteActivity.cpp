@@ -918,21 +918,25 @@ void AgentRemoteActivity::render(RenderLock&&) {
   int y = metrics.topPadding + metrics.headerHeight + 24;
 
   if (mode_ == Mode::Choose) {
-    renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_AGENT_MODE_TITLE));
-    y += lineHeight + 10;
+    // Title and item labels are bold + one size up; the description stays small
+    // and regular so the hierarchy is obvious at a glance.
+    const int titleHeight = renderer.getLineHeight(UI_12_FONT_ID);
+    renderer.drawText(UI_12_FONT_ID, left, y, tr(STR_AGENT_MODE_TITLE), true, EpdFontFamily::BOLD);
+    y += titleHeight + 12;
+
     const char* items[2] = {tr(STR_AGENT_MODE_TALK), tr(STR_AGENT_MODE_MIC)};
     const char* descriptions[2] = {tr(STR_AGENT_MODE_TALK_DESC), tr(STR_AGENT_MODE_MIC_DESC)};
     for (int i = 0; i < 2; ++i) {
       std::string row = (i == modeIndex_) ? "> " : "  ";
       row += items[i];
-      renderer.drawText(UI_10_FONT_ID, left, y, row.c_str());
-      y += lineHeight + 2;
+      renderer.drawText(UI_12_FONT_ID, left, y, row.c_str(), true, EpdFontFamily::BOLD);
+      y += titleHeight + 2;
       const auto hint = wrapDisplayText(renderer, SMALL_FONT_ID, descriptions[i], contentWidth - 16, 2);
       for (const auto& text : hint) {
         renderer.drawText(SMALL_FONT_ID, left + 16, y, text.c_str());
         y += renderer.getLineHeight(SMALL_FONT_ID);
       }
-      y += 10;
+      y += 12;
     }
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
