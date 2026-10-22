@@ -3,6 +3,7 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Utf8.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <ArduinoJson.h>
@@ -14,6 +15,7 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "WifiCredentialStore.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -23,6 +25,9 @@
 
 namespace {
 constexpr size_t kMaxHostLength = 128;
+// Discovery port. The device and the host bridge both speak it, and every
+// packet carries protocol "ONEPAGE-HUB" so other UDP 8767 services ignore us.
+constexpr uint16_t kDiscoveryPort = 8767;
 
 std::string friendlyError(const std::string& raw) {
   if (raw.empty()) {
@@ -41,6 +46,116 @@ std::string friendlyError(const std::string& raw) {
     return tr(STR_AGENT_DISCONNECTED);
   }
   return raw;
+}
+
+void trimTrailingSpaces(std::string& text) {
+  while (!text.empty() && text.back() == ' ') {
+    text.pop_back();
+  }
+}
+
+// Wraps `text` to `maxWidth` using `fontId`.
+//
+// GfxRenderer::wrappedText() only breaks on ASCII spaces, which is fine for the
+// English UI strings it was written for but useless here: a Chinese transcription
+// has no spaces at all, so the whole sentence counted as one "word" and came back
+// as a single truncated line -- the text then ran off the right edge of the panel
+// instead of wrapping onto the next line.
+//
+// This version breaks by measured pixel width and accepts the same break
+// opportunities a Chinese reader expects: after a space, or between two CJK
+// codepoints. Latin words are only split when a single word is wider than the
+// line. Returns at most `maxLines` lines, with the last one ellipsised when the
+// text does not fit (truncatedText() adds the ellipsis itself).
+std::vector<std::string> wrapDisplayText(const GfxRenderer& renderer, const int fontId, const std::string& text,
+                                         const int maxWidth, const int maxLines) {
+  std::vector<std::string> lines;
+  if (maxWidth <= 0 || maxLines <= 0 || text.empty()) {
+    return lines;
+  }
+
+  // ASR output arrives as one blob and may contain newlines/tabs from the
+  // gateway; collapse any whitespace run into a single space first.
+  std::string source;
+  source.reserve(text.size());
+  for (const char c : text) {
+    const bool space = c == '\n' || c == '\r' || c == '\t' || c == ' ';
+    if (space) {
+      if (!source.empty() && source.back() != ' ') {
+        source.push_back(' ');
+      }
+    } else {
+      source.push_back(c);
+    }
+  }
+  trimTrailingSpaces(source);
+
+  size_t pos = 0;
+  while (pos < source.size() && static_cast<int>(lines.size()) < maxLines) {
+    std::string line;
+    size_t cursor = pos;
+    size_t breakAfterSpace = 0;  // byte offset in `line` just past the last space
+    size_t breakAfterCjk = 0;    // byte offset in `line` just past the last CJK char
+
+    while (cursor < source.size()) {
+      const unsigned char* start = reinterpret_cast<const unsigned char*>(source.c_str()) + cursor;
+      const unsigned char* next = start;
+      const uint32_t cp = utf8NextCodepoint(&next);
+      const size_t cpLen = static_cast<size_t>(next - start);
+
+      line.append(source, cursor, cpLen);
+      if (renderer.getTextWidth(fontId, line.c_str()) > maxWidth) {
+        line.resize(line.size() - cpLen);  // this codepoint does not fit
+        break;
+      }
+      cursor += cpLen;
+      if (cp == ' ') {
+        breakAfterSpace = line.size();
+      } else if (utf8IsCjkBreakable(cp)) {
+        breakAfterCjk = line.size();
+      }
+    }
+
+    if (cursor >= source.size()) {
+      lines.push_back(line);  // the remainder fit on this line
+      break;
+    }
+
+    size_t cut = line.size();
+    if (breakAfterSpace > 0) {
+      cut = breakAfterSpace;  // keep the space itself out of the line
+    } else if (breakAfterCjk > 0) {
+      cut = breakAfterCjk;
+    }
+    if (cut == 0) {
+      // A single codepoint is wider than the whole line: emit it anyway so the
+      // loop always makes progress (truncation handles the visual overflow).
+      const unsigned char* start = reinterpret_cast<const unsigned char*>(source.c_str()) + pos;
+      const unsigned char* next = start;
+      utf8NextCodepoint(&next);
+      cut = static_cast<size_t>(next - start);
+      lines.push_back(source.substr(pos, cut));
+    } else {
+      std::string out = line.substr(0, cut);
+      trimTrailingSpaces(out);
+      lines.push_back(std::move(out));
+    }
+
+    size_t advance = pos + cut;
+    while (advance < source.size() && source[advance] == ' ') {
+      ++advance;
+    }
+    if (advance <= pos) {
+      advance = pos + cut;  // guarantee forward progress
+    }
+    pos = advance;
+  }
+
+  if (pos < source.size() && !lines.empty()) {
+    // Ran out of lines with text left: ellipsise the last one.
+    lines.back() = renderer.truncatedText(fontId, (lines.back() + " " + source.substr(pos)).c_str(), maxWidth);
+  }
+  return lines;
 }
 }  // namespace
 
@@ -208,10 +323,10 @@ void AgentRemoteActivity::announceHost() {
     return;
   }
   WiFiUDP udp;
-  if (!udp.begin(8767)) {
+  if (!udp.begin(kDiscoveryPort)) {
     return;
   }
-  const char hello[] = "{\"type\":\"hello\",\"id\":\"onepage\"}";
+  const char hello[] = "{\"type\":\"hello\",\"protocol\":\"ONEPAGE-HUB\",\"id\":\"onepage\"}";
   const IPAddress ip = WiFi.localIP();
   const IPAddress mask = WiFi.subnetMask();
   IPAddress broadcast;
@@ -220,7 +335,7 @@ void AgentRemoteActivity::announceHost() {
   }
   for (int attempt = 0; attempt < 2; ++attempt) {
     const IPAddress target = attempt == 0 ? broadcast : IPAddress(255, 255, 255, 255);
-    udp.beginPacket(target, 8767);
+    udp.beginPacket(target, kDiscoveryPort);
     udp.write(reinterpret_cast<const uint8_t*>(hello), sizeof(hello) - 1);
     udp.endPacket();
   }
@@ -238,7 +353,7 @@ bool AgentRemoteActivity::discoverHost() {
   requestUpdateAndWait();
 
   WiFiUDP udp;
-  if (!udp.begin(8767)) {
+  if (!udp.begin(kDiscoveryPort)) {
     discovering_ = false;
     loading_ = false;
     error_ = tr(STR_AGENT_NOT_FOUND);
@@ -246,45 +361,90 @@ bool AgentRemoteActivity::discoverHost() {
     return false;
   }
 
-  const char hello[] = "{\"type\":\"hello\",\"id\":\"onepage\"}";
   const IPAddress ip = WiFi.localIP();
   const IPAddress mask = WiFi.subnetMask();
   IPAddress broadcast;
   for (int i = 0; i < 4; ++i) {
     broadcast[i] = static_cast<uint8_t>(ip[i] | static_cast<uint8_t>(~mask[i]));
   }
-  for (int attempt = 0; attempt < 2; ++attempt) {
-    const IPAddress target = attempt == 0 ? broadcast : IPAddress(255, 255, 255, 255);
-    udp.beginPacket(target, 8767);
-    udp.write(reinterpret_cast<const uint8_t*>(hello), sizeof(hello) - 1);
-    udp.endPacket();
-  }
 
+  // Two-way discovery, so neither side ever needs a typed address:
+  //   device -> host: we broadcast HELLO, the bridge answers with its address;
+  //   host -> device: the bridge broadcasts a scan probe that carries its own
+  //                   address, and we answer + adopt it. This path still works
+  //                   when our broadcast is filtered but the host's is not.
+  // Every packet is tagged protocol "ONEPAGE-HUB" so unrelated UDP 8767
+  // listeners on the LAN ignore it.
+  const char hello[] = "{\"type\":\"hello\",\"protocol\":\"ONEPAGE-HUB\",\"id\":\"onepage\"}";
+
+  std::string host;
+  int port = 0;
   bool found = false;
-  const uint32_t startedAt = millis();
-  while (millis() - startedAt < 2500) {
-    const int size = udp.parsePacket();
-    if (size > 0) {
+
+  constexpr int kRounds = 3;
+  constexpr uint32_t kRoundMs = 4000;
+
+  for (int round = 0; round < kRounds && !found; ++round) {
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      const IPAddress target = attempt == 0 ? broadcast : IPAddress(255, 255, 255, 255);
+      udp.beginPacket(target, kDiscoveryPort);
+      udp.write(reinterpret_cast<const uint8_t*>(hello), sizeof(hello) - 1);
+      udp.endPacket();
+    }
+
+    const uint32_t roundStartedAt = millis();
+    while (!found && millis() - roundStartedAt < kRoundMs) {
+      const int size = udp.parsePacket();
+      if (size <= 0) {
+        delay(20);  // keep the socket serviced without busy-waiting
+        continue;
+      }
+
       char buffer[192];
       const int len = udp.read(buffer, sizeof(buffer) - 1);
-      if (len > 0) {
-        buffer[len] = '\0';
-        JsonDocument doc;
-        if (!deserializeJson(doc, buffer)) {
-          const char* host = doc["host"] | "";
-          const int port = doc["port"] | 0;
-          if (host[0] != '\0' && port > 0) {
-            config_.baseUrl = AgentConfig::normalizeBaseUrl(std::string("http://") + host + ":" +
-                                                            std::to_string(port));
-            found = true;
-            break;
-          }
-        }
+      if (len <= 0) {
+        continue;
+      }
+      buffer[len] = '\0';
+
+      JsonDocument doc;
+      if (deserializeJson(doc, buffer)) {
+        continue;
+      }
+
+      const char* kind = doc["type"] | "";
+      if (strcmp(kind, "onepage-scan") == 0) {
+        // The host is looking for us. Answer so it can record our address, then
+        // fall through and adopt the host address carried in the same probe.
+        JsonDocument reply;
+        reply["type"] = "onepage-hub";
+        reply["protocol"] = "ONEPAGE-HUB";
+        reply["name"] = "ONEPAGE-HUB";
+        reply["port"] = kDiscoveryPort;
+        char out[96];
+        const size_t outLen = serializeJson(reply, out, sizeof(out));
+        udp.beginPacket(udp.remoteIP(), udp.remotePort());
+        udp.write(reinterpret_cast<const uint8_t*>(out), outLen);
+        udp.endPacket();
+        LOG_INF("AGENT", "host scan probe seen, replied");
+      } else if (strcmp(kind, "host") != 0) {
+        continue;  // not our protocol
+      }
+
+      const char* candidateHost = doc["host"] | "";
+      const int candidatePort = doc["port"] | 0;
+      if (candidateHost[0] != '\0' && candidatePort > 0) {
+        host = candidateHost;
+        port = candidatePort;
+        found = true;
       }
     }
-    delay(50);
   }
   udp.stop();
+
+  if (found) {
+    config_.baseUrl = AgentConfig::normalizeBaseUrl(std::string("http://") + host + ":" + std::to_string(port));
+  }
 
   discovering_ = false;
   loading_ = false;
@@ -590,7 +750,7 @@ void AgentRemoteActivity::render(RenderLock&&) {
     const int hintTop = renderer.getScreenHeight() - metrics.buttonHintsHeight - 8;
     const int reserve = error_.empty() ? 0 : 1;
     const int maxLines = std::max(1, std::min(8, (hintTop - y) / lineHeight - reserve));
-    const auto lines = renderer.wrappedText(UI_10_FONT_ID, transcript_.c_str(), contentWidth, maxLines);
+    const auto lines = wrapDisplayText(renderer, UI_10_FONT_ID, transcript_, contentWidth, maxLines);
     for (const auto& text : lines) {
       renderer.drawText(UI_10_FONT_ID, left, y, text.c_str());
       y += lineHeight;
@@ -657,7 +817,7 @@ void AgentRemoteActivity::render(RenderLock&&) {
     renderer.drawText(SMALL_FONT_ID, left, y, tr(STR_AGENT_NO_REPLY));
     y += lineHeight;
   } else {
-    const auto lines = renderer.wrappedText(UI_10_FONT_ID, reply.c_str(), contentWidth, maxReplyLines);
+    const auto lines = wrapDisplayText(renderer, UI_10_FONT_ID, reply, contentWidth, maxReplyLines);
     for (const auto& text : lines) {
       renderer.drawText(UI_10_FONT_ID, left, y, text.c_str());
       y += lineHeight;
@@ -672,7 +832,7 @@ void AgentRemoteActivity::render(RenderLock&&) {
       renderer.drawText(SMALL_FONT_ID, left, y, tr(STR_AGENT_LOADING));
     } else if (!error_.empty()) {
       const int remaining = std::max(1, std::min(2, (hintTop - y) / lineHeight));
-      const auto errLines = renderer.wrappedText(SMALL_FONT_ID, error_.c_str(), contentWidth, remaining);
+      const auto errLines = wrapDisplayText(renderer, SMALL_FONT_ID, error_, contentWidth, remaining);
       int ey = y;
       for (const auto& text : errLines) {
         renderer.drawText(SMALL_FONT_ID, left, ey, text.c_str());
