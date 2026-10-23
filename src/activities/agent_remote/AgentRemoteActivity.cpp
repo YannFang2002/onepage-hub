@@ -807,14 +807,16 @@ void AgentRemoteActivity::pollStatus() {
 void AgentRemoteActivity::loop() {
   // Mode chooser: the two modes share nothing below, so keep it explicit.
   if (mode_ == Mode::Choose) {
-    // Wrapping navigation: Up on the first entry lands on the last one (and Down
-    // on the last wraps back), so the list never feels stuck.
-    if (mappedInput.wasPressed(MappedInputManager::Button::Up) && modeIndex_ != 1) {
-      modeIndex_ = 1;
+    // Wrapping navigation over two entries: Up from the first lands on the last,
+    // Down from the last returns to the first -- and both still work when there
+    // is nowhere to wrap to (the previous "!= index" guards just froze instead).
+    constexpr int kModeCount = 2;
+    if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
+      modeIndex_ = (modeIndex_ - 1 + kModeCount) % kModeCount;
       requestUpdate();
     }
-    if (mappedInput.wasPressed(MappedInputManager::Button::Down) && modeIndex_ != 0) {
-      modeIndex_ = 0;
+    if (mappedInput.wasPressed(MappedInputManager::Button::Down)) {
+      modeIndex_ = (modeIndex_ + 1) % kModeCount;
       requestUpdate();
     }
     if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
