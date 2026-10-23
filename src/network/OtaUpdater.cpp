@@ -45,6 +45,7 @@ esp_err_t http_client_set_header_cb(esp_http_client_handle_t http_client) {
 
 OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   LOG_DBG("OTA", "Checking for update (current: %s)", CROSSPOINT_VERSION);
+  lastError.clear();
 
   // Stream the ~32KB release JSON straight into the parser as it arrives.
   // Buffering the whole body in a std::string would add a growing allocation
@@ -58,6 +59,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   });
   if (!ok) {
     LOG_ERR("OTA", "Release check fetch failed");
+    lastError = "HTTPS 请求失败：网络、证书或内存不足";
     return HTTP_ERROR;
   }
 
@@ -66,11 +68,13 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
 
   if (!releaseParser.foundTag()) {
     LOG_ERR("OTA", "No tag_name in release JSON");
+    lastError = "Release JSON 中没有 tag_name";
     return JSON_PARSE_ERROR;
   }
 
   if (!releaseParser.foundFirmware()) {
     LOG_ERR("OTA", "No firmware.bin asset found");
+    lastError = "Release 中没有名为 firmware.bin 的附件";
     return NO_UPDATE;
   }
 
@@ -128,7 +132,9 @@ bool OtaUpdater::isUpdateNewer() const {
 const std::string& OtaUpdater::getLatestVersion() const { return latestVersion; }
 
 OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgress, void* ctx) {
+  lastError.clear();
   if (!isUpdateNewer()) {
+    lastError = "当前版本不低于 Release 版本";
     return UPDATE_OLDER_ERROR;
   }
 
@@ -159,6 +165,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   esp_err = esp_https_ota_begin(&ota_config, &ota_handle);
   if (esp_err != ESP_OK) {
     LOG_DBG("OTA", "HTTP OTA Begin Failed: %s", esp_err_to_name(esp_err));
+    lastError = std::string("OTA 启动失败：") + esp_err_to_name(esp_err);
     return INTERNAL_UPDATE_ERROR;
   }
 
@@ -185,12 +192,14 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
 
   if (esp_err != ESP_OK) {
     LOG_ERR("OTA", "esp_https_ota_perform Failed: %s", esp_err_to_name(esp_err));
+    lastError = std::string("OTA 写入失败：") + esp_err_to_name(esp_err);
     esp_https_ota_finish(ota_handle);
     return HTTP_ERROR;
   }
 
   if (!esp_https_ota_is_complete_data_received(ota_handle)) {
     LOG_ERR("OTA", "esp_https_ota_is_complete_data_received Failed: %s", esp_err_to_name(esp_err));
+    lastError = "OTA 数据不完整";
     esp_https_ota_finish(ota_handle);
     return INTERNAL_UPDATE_ERROR;
   }
@@ -198,6 +207,7 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   esp_err = esp_https_ota_finish(ota_handle);
   if (esp_err != ESP_OK) {
     LOG_ERR("OTA", "esp_https_ota_finish Failed: %s", esp_err_to_name(esp_err));
+    lastError = std::string("OTA 完成失败：") + esp_err_to_name(esp_err);
     return INTERNAL_UPDATE_ERROR;
   }
 
