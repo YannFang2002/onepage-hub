@@ -21,6 +21,7 @@ enum class AppId : uint8_t {
   Recorder = 3,
   FileManager = 4,
   AgentRemote = 5,
+  OnlineUpdate = 6,
   None = 0xFF
 };
 

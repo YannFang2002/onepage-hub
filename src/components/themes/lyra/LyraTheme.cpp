@@ -15,6 +15,7 @@
 #include "components/icons/book.h"
 #include "components/icons/book24.h"
 #include "components/icons/agent32.h"
+#include "components/icons/update32.h"
 #include "components/icons/bookmark.h"
 #include "components/icons/cover.h"
 #include "components/icons/file24.h"
@@ -82,6 +83,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return MicIcon;
       case UIIcon::Agent:
         return AgentIcon;
+      case UIIcon::OnlineUpdate:
+        return UpdateIcon;
       default:
         return nullptr;
     }
