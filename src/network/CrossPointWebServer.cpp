@@ -372,7 +372,13 @@ void CrossPointWebServer::handleStatus() const {
   doc["rssi"] = apMode ? 0 : WiFi.RSSI();
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["uptime"] = millis() / 1000;
+#ifdef ONEPAGE_C61
+  // This build targets the OnePage C61 board, not the stock X3/X4 readers. The
+  // companion app shows this string, so report the product name instead.
+  doc["device"] = "O1";
+#else
   doc["device"] = gpio.deviceIsX3() ? "X3" : "X4";
+#endif
 
   String json;
   serializeJson(doc, json);
