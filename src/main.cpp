@@ -562,7 +562,13 @@ void setup() {
       break;
   }
 
-  if (recoveryFirmwareMode) {
+  if (Storage.exists("/system/.crosspoint/ota_resume")) {
+    // Highest priority: an OTA restart must land back in the app that performed
+    // the update, regardless of the wake reason or the boot-resume decision.
+    Storage.remove("/system/.crosspoint/ota_resume");
+    LOG_INF("MAIN", "OTA resume: returning to device link");
+    activityManager.launchApp(AppId::FileTransfer);
+  } else if (recoveryFirmwareMode) {
     // Skip normal desktop/app routing: jump straight into the SD firmware picker.
     activityManager.replaceActivity(
         std::make_unique<SdFirmwareUpdateActivity>(renderer, mappedInputManager, /*recoveryMode=*/true));
@@ -581,6 +587,8 @@ void setup() {
     }
   } else if (!wokeFromSleep) {
     // Cold boot always lands on the desktop.
+    // A cold boot normally lands on the desktop, but an OTA restart leaves a
+    // marker so the device comes back into the app that performed the update.
     activityManager.goToDesktop();
   } else {
     resumeLastApp();

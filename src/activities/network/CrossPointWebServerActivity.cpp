@@ -379,6 +379,8 @@ void CrossPointWebServerActivity::loop() {
                                   tr(STR_OTA_RESTARTING));
         renderer.displayBuffer();
         LOG_INF("WEBACT", "OTA written to %s, restarting", written.c_str());
+        // Come back into this app after the reboot instead of the desktop.
+        Storage.writeFile("/system/.crosspoint/ota_resume", "filetransfer");
         delay(4000);
         ESP.restart();
       }
