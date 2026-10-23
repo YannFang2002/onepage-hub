@@ -1089,7 +1089,23 @@ void AgentRemoteActivity::render(RenderLock&&) {
   snprintf(line, sizeof(line), "  %s   %s", tr(STR_AGENT_STATE),
            status_.ok ? agentStateText(status_.state) : tr(STR_AGENT_UNKNOWN));
   renderer.drawText(UI_10_FONT_ID, left, y, line);
-  y += lineHeight + 10;
+  y += lineHeight;
+
+  // Workspace and session title: what the agent is working on, and which
+  // conversation this device is attached to.
+  if (status_.ok && !status_.workspace.empty()) {
+    snprintf(line, sizeof(line), "  %s   %s", tr(STR_AGENT_WORKSPACE), status_.workspace.c_str());
+    renderer.drawText(UI_10_FONT_ID, left, y,
+                      renderer.truncatedText(UI_10_FONT_ID, line, contentWidth).c_str());
+    y += lineHeight;
+  }
+  if (status_.ok && !status_.sessionTitle.empty()) {
+    snprintf(line, sizeof(line), "  %s   %s", tr(STR_AGENT_SESSION), status_.sessionTitle.c_str());
+    renderer.drawText(UI_10_FONT_ID, left, y,
+                      renderer.truncatedText(UI_10_FONT_ID, line, contentWidth).c_str());
+    y += lineHeight;
+  }
+  y += 10;
 
   // Section 3 — the reply. Markdown cannot be rendered here and a full answer
   // never fits, so the first sentence is the contract: the host trims it, and

@@ -212,6 +212,8 @@ bool AgentClient::fetchStatus(const std::string& baseUrl, AgentStatus& out, std:
   out.ok = doc["ok"] | false;
   out.agent = doc["agent"] | "";
   out.repo = truncateUtf8(doc["repo"] | "", 40);
+  out.workspace = truncateUtf8(doc["workspace"] | "", 40);
+  out.sessionTitle = truncateUtf8(doc["sessionTitle"] | "", 60);
   out.state = doc["state"] | "unknown";
   out.lastReply = truncateUtf8(doc["lastReply"] | "", 80);
 

@@ -6,6 +6,8 @@ struct AgentStatus {
   bool ok = false;
   std::string agent;
   std::string repo;
+  std::string workspace;
+  std::string sessionTitle;
   std::string state;  // idle / running / error / unknown
   std::string lastReply;
 };
