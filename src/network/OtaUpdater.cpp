@@ -15,9 +15,28 @@
 // clang-format on
 
 #include <string>
+#include <cstdio>
 
 namespace {
-constexpr char latestReleaseUrl[] = "https://api.github.com/repos/crosspoint-reader/crosspoint-reader/releases/latest";
+// Gitee is the primary update source in mainland China. The release must carry
+// an app-only asset named exactly "firmware.bin" (the merged 0x0 web-flasher
+// image is not a valid esp_https_ota payload).
+constexpr char latestReleaseUrl[] =
+    "https://gitee.com/api/v5/repos/Yann_Fang/onepage-hub/releases/latest";
+
+void parseVersionTriplet(const char* text, int& major, int& minor, int& patch) {
+  major = 0;
+  minor = 0;
+  patch = 0;
+  if (text == nullptr) {
+    return;
+  }
+  const char* p = text;
+  while (*p != '\0' && (*p < '0' || *p > '9')) {
+    ++p;
+  }
+  sscanf(p, "%d.%d.%d", &major, &minor, &patch);
+}
 
 esp_err_t http_client_set_header_cb(esp_http_client_handle_t http_client) {
   return esp_http_client_set_header(http_client, "User-Agent", "CrossPoint-ESP32-" CROSSPOINT_VERSION);
@@ -74,11 +93,8 @@ bool OtaUpdater::isUpdateNewer() const {
   int currentMajor, currentMinor, currentPatch;
   int latestMajor, latestMinor, latestPatch;
 
-  const auto currentVersion = CROSSPOINT_VERSION;
-
-  // semantic version check (only match on 3 segments)
-  sscanf(latestVersion.c_str(), "%d.%d.%d", &latestMajor, &latestMinor, &latestPatch);
-  sscanf(currentVersion, "%d.%d.%d", &currentMajor, &currentMinor, &currentPatch);
+  parseVersionTriplet(CROSSPOINT_VERSION, currentMajor, currentMinor, currentPatch);
+  parseVersionTriplet(latestVersion.c_str(), latestMajor, latestMinor, latestPatch);
 
   /*
    * Compare major versions.
@@ -102,7 +118,7 @@ bool OtaUpdater::isUpdateNewer() const {
   // If we reach here, it means all segments are equal.
   // One final check, if we're on an RC build (contains "-rc"), we should consider the latest version as newer even if
   // the segments are equal, since RC builds are pre-release versions.
-  if (strstr(currentVersion, "-rc") != nullptr) {
+  if (strstr(CROSSPOINT_VERSION, "-rc") != nullptr) {
     return true;
   }
 
