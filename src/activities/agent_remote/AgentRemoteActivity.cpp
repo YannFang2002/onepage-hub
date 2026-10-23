@@ -779,6 +779,15 @@ void AgentRemoteActivity::loop() {
   }
 
   if (wifiConnecting_) {
+    // Back must work while a connection attempt is in flight: this branch
+    // returns early every iteration, so without this the page froze on
+    // "connecting WiFi" with no way out.
+    if (mappedInput.wasPressed(MappedInputManager::Button::Back)) {
+      wifiConnecting_ = false;
+      error_.clear();
+      onGoDesktop();
+      return;
+    }
     if (WiFi.status() == WL_CONNECTED) {
       wifiConnecting_ = false;
       error_.clear();
@@ -865,6 +874,15 @@ void AgentRemoteActivity::loop() {
     if (WiFi.status() != WL_CONNECTED) {
       startWifiSetup();
       return;
+    }
+    // Voice needs the host (ASR + agent); refuse instead of recording into a void.
+    if (!status_.ok) {
+      refreshStatus();
+      if (!status_.ok) {
+        error_ = tr(STR_AGENT_HOST_OFFLINE);
+        requestUpdate();
+        return;
+      }
     }
     startVoice();
     return;
