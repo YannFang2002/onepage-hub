@@ -78,12 +78,14 @@ void CrossPointWebServerActivity::onEnter() {
   LOG_DBG("WEBACT", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());
 
   // Consume the OTA marker here rather than in main: only this activity knows
-  // that the right response is "auto-join the saved network, then report back",
-  // and keeping the marker until now means a failed launch can retry next boot.
-  otaResume = Storage.exists("/system/.crosspoint/ota_resume");
+  // that the right response is "restore the previous network mode, then report
+  // back", and keeping the marker until now means a failed launch can retry.
+  const String otaMarker = Storage.readFile("/system/.crosspoint/ota_resume");
+  otaResume = !otaMarker.isEmpty();
+  otaResumeAp = otaMarker.indexOf(":ap") >= 0;
   if (otaResume) {
     Storage.remove("/system/.crosspoint/ota_resume");
-    LOG_INF("WEBACT", "OTA resume marker consumed; auto-joining saved network");
+    LOG_INF("WEBACT", "OTA resume marker consumed (%s)", otaMarker.c_str());
   }
   otaNotified = false;
 
@@ -97,11 +99,21 @@ void CrossPointWebServerActivity::onEnter() {
   requestUpdate();
 
   if (otaResume) {
-    // Skip the mode chooser. JOIN_NETWORK launches WifiSelectionActivity with
-    // autoConnect enabled, which uses the last saved SSID; if there is none it
-    // falls back to the normal network list instead of failing silently.
-    // If the last-SSID field is empty (e.g. cleared by a previous forget) but
-    // credentials exist, promote the first one so the OTA path still auto-joins.
+    if (otaResumeAp) {
+      // The browser was on the device's own hotspot. Recreate the same AP so
+      // its tab can reconnect to 192.168.4.1 and read lastResult.
+      LOG_INF("WEBACT", "OTA resume: restoring hotspot mode");
+      isApMode = true;
+      networkMode = NetworkMode::CREATE_HOTSPOT;
+      state = WebServerActivityState::AP_STARTING;
+      requestUpdate();
+      startAccessPoint();
+      return;
+    }
+
+    // STA / Calibre: both need the saved station network for the web page.
+    // Calibre's transfer UI is not auto-resumed; the page confirmation comes
+    // first, and the user can reopen Calibre afterwards.
     WIFI_STORE.loadFromFile();
     if (WIFI_STORE.getLastConnectedSsid().empty() && !WIFI_STORE.getCredentials().empty()) {
       WIFI_STORE.setLastConnectedSsid(WIFI_STORE.getCredentials().front().ssid);
@@ -436,7 +448,12 @@ void CrossPointWebServerActivity::loop() {
         renderer.displayBuffer();
         LOG_INF("WEBACT", "OTA written to %s, restarting", written.c_str());
         // Come back into this app after the reboot instead of the desktop.
-        Storage.writeFile("/system/.crosspoint/ota_resume", "filetransfer");
+        // Persist which network mode the upload came from so an AP-only setup
+        // restores its hotspot instead of blindly trying a saved station.
+        const char* resumeMode = isApMode ? "filetransfer:ap"
+                               : networkMode == NetworkMode::CONNECT_CALIBRE ? "filetransfer:calibre"
+                                                                             : "filetransfer:sta";
+        Storage.writeFile("/system/.crosspoint/ota_resume", resumeMode);
         delay(4000);
         ESP.restart();
       }

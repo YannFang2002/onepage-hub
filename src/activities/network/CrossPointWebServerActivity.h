@@ -55,6 +55,7 @@ class CrossPointWebServerActivity final : public Activity {
   // True when this entry came from /system/.crosspoint/ota_resume. The marker is
   // consumed here; the flag then drives auto-join and the host success packet.
   bool otaResume = false;
+  bool otaResumeAp = false;
   bool otaNotified = false;
 
   void renderServerRunning() const;
