@@ -131,9 +131,21 @@ std::string summarizeReply(const std::string& raw) {
     lastWasSpace = false;
   }
 
-  const size_t end = cleaned.find_first_of("。！？!?");
-  if (end != std::string::npos) {
-    cleaned.resize(end + 1);
+  // Cut after the first sentence terminator, scanning CODEPOINTS. Using
+  // find_first_of("。！？!?") matches individual bytes -- 0x82/0x81 also occur as
+  // continuation bytes inside ordinary characters, so the cut landed inside a
+  // character and the last glyph came out as mojibake every time.
+  size_t offset = 0;
+  while (offset < cleaned.size()) {
+    const auto* textBase = reinterpret_cast<const unsigned char*>(cleaned.c_str());
+    const unsigned char* cursor = textBase + offset;
+    const uint32_t codepoint = utf8NextCodepoint(&cursor);
+    if (codepoint == 0x3002 || codepoint == 0xFF01 || codepoint == 0xFF1F || codepoint == '!' ||
+        codepoint == '?') {
+      cleaned.resize(static_cast<size_t>(cursor - textBase));
+      break;
+    }
+    offset = static_cast<size_t>(cursor - textBase);
   }
   return cleaned;
 }
