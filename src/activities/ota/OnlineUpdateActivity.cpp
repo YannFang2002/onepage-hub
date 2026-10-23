@@ -13,6 +13,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "network/CrossPointWebServer.h"
+#include "util/TextWrap.h"
 
 OnlineUpdateActivity::~OnlineUpdateActivity() { stopServer(); }
 
@@ -150,8 +151,12 @@ void OnlineUpdateActivity::render(RenderLock&&) {
     renderer.drawText(UI_10_FONT_ID, left, y, status.c_str());
     y += lineHeight + 8;
 
-    const char* hint = tr(STR_OTA_KEEP_POWER);
-    renderer.drawText(SMALL_FONT_ID, left, y, renderer.truncatedText(SMALL_FONT_ID, hint, contentWidth).c_str());
+    const auto hintLines =
+        textwrap::wrapDisplayText(renderer, SMALL_FONT_ID, tr(STR_OTA_KEEP_POWER), contentWidth, 3);
+    for (const auto& line : hintLines) {
+      renderer.drawText(SMALL_FONT_ID, left, y, line.c_str());
+      y += renderer.getLineHeight(SMALL_FONT_ID);
+    }
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
