@@ -22,8 +22,6 @@ static OnePageMdnsStub MDNS;
 
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
-#include "SilentRestart.h"
-#include "WifiCredentialStore.h"
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
@@ -80,11 +78,19 @@ void CrossPointWebServerActivity::onEnter() {
   // Consume the OTA marker here rather than in main: only this activity knows
   // that the right response is "restore the previous network mode, then report
   // back", and keeping the marker until now means a failed launch can retry.
-  const String otaMarker = Storage.readFile("/system/.crosspoint/ota_resume");
+  // SD access must hold the render lock; doing this unlocked raced the render
+  // task while it still had the SD/SPI bus.
+  String otaMarker;
+  {
+    RenderLock lock(*this);
+    otaMarker = Storage.readFile("/system/.crosspoint/ota_resume");
+    if (!otaMarker.isEmpty()) {
+      Storage.remove("/system/.crosspoint/ota_resume");
+    }
+  }
   otaResume = !otaMarker.isEmpty();
   otaResumeAp = otaMarker.indexOf(":ap") >= 0;
   if (otaResume) {
-    Storage.remove("/system/.crosspoint/ota_resume");
     LOG_INF("WEBACT", "OTA resume marker consumed (%s)", otaMarker.c_str());
   }
   otaNotified = false;
@@ -113,11 +119,8 @@ void CrossPointWebServerActivity::onEnter() {
 
     // STA / Calibre: both need the saved station network for the web page.
     // Calibre's transfer UI is not auto-resumed; the page confirmation comes
-    // first, and the user can reopen Calibre afterwards.
-    WIFI_STORE.loadFromFile();
-    if (WIFI_STORE.getLastConnectedSsid().empty() && !WIFI_STORE.getCredentials().empty()) {
-      WIFI_STORE.setLastConnectedSsid(WIFI_STORE.getCredentials().front().ssid);
-    }
+    // first, and the user can reopen Calibre afterwards. WifiSelectionActivity
+    // loads WIFI_STORE itself under its own RenderLock.
     onNetworkModeSelected(NetworkMode::JOIN_NETWORK);
     return;
   }
@@ -143,7 +146,10 @@ void CrossPointWebServerActivity::onExit() {
   stopDnsServer();
   MDNS.end();
 
-  // Skip reboot if WiFi was never activated (e.g. user backed out of mode selection).
+  // Leaving Device Interconnect must return to the desktop, not reboot. The
+  // old silentRestart() here was a heap-defrag workaround, but it made every
+  // normal exit look like a crash/reset. Tear WiFi down and let the caller
+  // transition; the next activity starts with a clean network stack.
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     if (isApMode) {
       WiFi.softAPdisconnect(true);
@@ -151,7 +157,7 @@ void CrossPointWebServerActivity::onExit() {
       WiFi.disconnect(false);
     }
     delay(30);
-    silentRestart();
+    WiFi.mode(WIFI_OFF);
   }
 
   LOG_DBG("WEBACT", "Free heap at onExit end: %d bytes", ESP.getFreeHeap());
@@ -333,7 +339,12 @@ void CrossPointWebServerActivity::recordOtaSuccess() {
            "{\"ok\":true,\"version\":\"%s\",\"slot\":\"%s\"}",
            CROSSPOINT_VERSION, slot);
 
-  if (Storage.writeFile("/system/.crosspoint/ota_result.json", payload)) {
+  bool written = false;
+  {
+    RenderLock lock(*this);
+    written = Storage.writeFile("/system/.crosspoint/ota_result.json", payload);
+  }
+  if (written) {
     LOG_INF("WEBACT", "OTA result persisted: %s", payload);
   } else {
     LOG_ERR("WEBACT", "failed to persist OTA result");
