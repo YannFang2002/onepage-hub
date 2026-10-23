@@ -6,6 +6,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 
 #include <algorithm>
@@ -15,6 +16,7 @@
 #include "OpdsServerStore.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
+#include "FirmwareFlasher.h"
 #include "WebDAVHandler.h"
 #include "WifiCredentialStore.h"
 #include "html/FilesPageHtml.generated.h"
@@ -174,6 +176,11 @@ void CrossPointWebServer::begin() {
   server->on("/api/wifi", HTTP_GET, [this] { handleGetWifiNetworks(); });
   server->on("/api/wifi", HTTP_POST, [this] { handlePostWifiNetwork(); });
   server->on("/api/wifi/delete", HTTP_POST, [this] { handleDeleteWifiNetwork(); });
+
+  // Firmware update over the device's own web UI
+  server->on("/ota", HTTP_GET, [this] { handleOtaPage(); });
+  server->on("/api/ota/status", HTTP_GET, [this] { handleOtaStatus(); });
+  server->on("/api/ota", HTTP_POST, [this] { handleOtaPost(); }, [this] { handleOtaUpload(); });
 
   server->onNotFound([this] { handleNotFound(); });
   LOG_DBG("WEB", "[MEM] Free heap after route setup: %d bytes", ESP.getFreeHeap());
@@ -1910,4 +1917,172 @@ void CrossPointWebServer::handleFontDelete() {
     server->send(500, "application/json", "{\"error\":\"Delete failed\"}");
     LOG_ERR("WEB", "Failed to delete font family: %s", familyName);
   }
+}
+
+// ===========================================================================
+// OTA: firmware upload through the device's own web UI
+// ===========================================================================
+namespace {
+constexpr char kOtaStagingPath[] = "/system/.crosspoint/ota/firmware.bin";
+
+const char kOtaPageHtml[] =
+    "<!doctype html><meta charset=utf-8>"
+    "<meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>OnePage 在线升级</title>"
+    "<style>body{font-family:system-ui,sans-serif;max-width:34rem;margin:2rem auto;padding:0 1rem}"
+    "#bar{height:1.2rem;background:#eee;border-radius:6px;overflow:hidden;margin:.6rem 0}"
+    "#fill{height:100%;width:0;background:#333;transition:width .2s}"
+    "button{padding:.7rem 1.2rem;font-size:1rem;margin-top:.8rem}"
+    "pre{background:#f6f6f6;padding:.8rem;border-radius:6px;white-space:pre-wrap}</style>"
+    "<h2>OnePage 在线升级</h2>"
+    "<p>选择固件文件（.bin），上传完成后设备会自动校验并写入，然后重启。</p>"
+    "<form id=f enctype=multipart/form-data method=post action=/api/ota>"
+    "<input type=file name=firmware accept='.bin' required> "
+    "<button type=submit>上传并升级</button></form>"
+    "<div id=bar><div id=fill></div></div>"
+    "<pre id=log>等待上传…</pre>"
+    "<script>"
+    "const log=document.getElementById('log'),fill=document.getElementById('fill');"
+    "function poll(){fetch('/api/ota/status').then(r=>r.json()).then(s=>{"
+    "if(s.percent!=null)fill.style.width=s.percent+'%';"
+    "log.textContent=`${s.stage}  ${s.percent||0}%  ${s.message||''}`;"
+    "if(s.stage!=='Done'&&s.stage!=='Failed')setTimeout(poll,700);}).catch(()=>setTimeout(poll,1500));}"
+    "document.getElementById('f').addEventListener('submit',()=>{setTimeout(poll,300);});"
+    "poll();"
+    "</script>";
+}  // namespace
+
+bool CrossPointWebServer::otaAuthorized() {
+  if (otaPassword.isEmpty()) {
+    return true;
+  }
+  if (server->authenticate("onepage", otaPassword.c_str())) {
+    return true;
+  }
+  server->requestAuthentication();
+  return false;
+}
+
+void CrossPointWebServer::handleOtaPage() {
+  if (!otaAuthorized()) {
+    return;
+  }
+  server->send(200, "text/html", kOtaPageHtml);
+}
+
+void CrossPointWebServer::handleOtaStatus() {
+  if (!otaAuthorized()) {
+    return;
+  }
+  const char* stage = "Idle";
+  switch (otaState_.stage) {
+    case OtaStage::Idle: stage = "Idle"; break;
+    case OtaStage::Receiving: stage = "Receiving"; break;
+    case OtaStage::Ready: stage = "Ready"; break;
+    case OtaStage::Verifying: stage = "Verifying"; break;
+    case OtaStage::Writing: stage = "Writing"; break;
+    case OtaStage::Done: stage = "Done"; break;
+    case OtaStage::Failed: stage = "Failed"; break;
+  }
+  String body = "{\"stage\":\"";
+  body += stage;
+  body += "\",\"percent\":";
+  body += String(otaState_.percent);
+  body += ",\"received\":";
+  body += String(static_cast<unsigned>(otaState_.received));
+  body += ",\"message\":\"";
+  body += otaState_.message;
+  body += "\"}";
+  server->send(200, "application/json", body);
+}
+
+void CrossPointWebServer::handleOtaUpload() {
+  esp_task_wdt_reset();
+  if (!running || !server) {
+    return;
+  }
+  HTTPUpload& upload = server->upload();
+
+  if (upload.status == UPLOAD_FILE_START) {
+    otaState_ = OtaState();
+    otaState_.stage = OtaStage::Receiving;
+    otaUploading = false;
+    Storage.ensureDirectoryExists("/system/.crosspoint/ota");
+    Storage.remove(kOtaStagingPath);
+    if (!Storage.openFileForWrite("OTA", kOtaStagingPath, otaFile)) {
+      otaState_.stage = OtaStage::Failed;
+      otaState_.message = "无法写入 SD 卡";
+      LOG_ERR("OTA", "cannot open staging file");
+      return;
+    }
+    otaUploading = true;
+    LOG_INF("OTA", "receiving firmware: %s", upload.filename.c_str());
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (otaUploading && otaFile) {
+      otaFile.write(upload.buf, upload.currentSize);
+      otaState_.received += upload.currentSize;
+      otaState_.percent = upload.totalSize > 0
+                              ? static_cast<int>(otaState_.received * 100 / upload.totalSize)
+                              : 0;
+    }
+    esp_task_wdt_reset();
+  } else if (upload.status == UPLOAD_FILE_END) {
+    if (otaFile) {
+      otaFile.close();
+    }
+    otaUploading = false;
+    otaState_.stage = OtaStage::Ready;
+    otaState_.message = "上传完成，正在校验";
+    LOG_INF("OTA", "received %u bytes", static_cast<unsigned>(otaState_.received));
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    if (otaFile) {
+      otaFile.close();
+    }
+    otaUploading = false;
+    otaState_.stage = OtaStage::Failed;
+    otaState_.message = "上传中断";
+  }
+}
+
+void CrossPointWebServer::handleOtaPost() {
+  if (!otaAuthorized()) {
+    return;
+  }
+  server->send(200, "application/json", "{\"ok\":true}");
+}
+
+bool CrossPointWebServer::processPendingOta() {
+  if (otaState_.stage == OtaStage::Done) {
+    return true;
+  }
+  if (otaState_.stage != OtaStage::Ready) {
+    return false;
+  }
+
+  otaState_.stage = OtaStage::Verifying;
+  otaState_.message = "校验镜像";
+  const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
+  const size_t slotSize = target != nullptr ? target->size : 0;
+  const auto valid = firmware_flash::validateImageFile(kOtaStagingPath, slotSize);
+  if (valid != firmware_flash::Result::OK) {
+    otaState_.stage = OtaStage::Failed;
+    otaState_.message = firmware_flash::resultName(valid);
+    LOG_ERR("OTA", "validate failed: %s", firmware_flash::resultName(valid));
+    return false;
+  }
+
+  otaState_.stage = OtaStage::Writing;
+  otaState_.message = "写入固件";
+  const auto written = firmware_flash::flashFromSdPath(kOtaStagingPath, nullptr, nullptr, true);
+  if (written != firmware_flash::Result::OK) {
+    otaState_.stage = OtaStage::Failed;
+    otaState_.message = firmware_flash::resultName(written);
+    LOG_ERR("OTA", "flash failed: %s", firmware_flash::resultName(written));
+    return false;
+  }
+
+  Storage.remove(kOtaStagingPath);
+  otaState_.stage = OtaStage::Done;
+  otaState_.message = "升级完成";
+  return true;
 }

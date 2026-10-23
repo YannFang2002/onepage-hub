@@ -1,172 +1,78 @@
 #include "OnlineUpdateActivity.h"
 
-#include <ArduinoJson.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
 #include <WiFi.h>
-#include <esp_app_desc.h>
-#include <esp_ota_ops.h>
+#include <esp_task_wdt.h>
 
-#include <string>
+#include <variant>
 
+#include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
-#include "network/FirmwareFlasher.h"
-#include "network/HttpDownloader.h"
+#include "network/CrossPointWebServer.h"
 
-namespace {
-
-// The version baked into the app description is "onepage-hub-1.4.1"; the bridge
-// reports plain "1.4.1". Compare the trailing component only.
-std::string shortVersion(const char* raw) {
-  if (raw == nullptr) {
-    return {};
-  }
-  std::string value(raw);
-  const size_t dash = value.rfind('-');
-  return dash == std::string::npos ? value : value.substr(dash + 1);
-}
-
-}  // namespace
+OnlineUpdateActivity::~OnlineUpdateActivity() { stopServer(); }
 
 void OnlineUpdateActivity::onEnter() {
   Activity::onEnter();
-  config_.load();
-  phase_ = Phase::Idle;
-  message_ = tr(STR_OTA_IDLE);
-  remoteVersion_.clear();
-  downloadUrl_.clear();
-  percent_ = 0;
-  workPending_ = false;
-  rebootPending_ = false;
+  state_ = State::WifiWait;
+  rebootAt_ = 0;
   requestUpdate();
-}
 
-void OnlineUpdateActivity::setPhase(const Phase phase, const std::string& message) {
-  phase_ = phase;
-  message_ = message;
-  requestUpdate();
-}
-
-bool OnlineUpdateActivity::fetchManifest() {
-  if (config_.baseUrl.empty()) {
-    setPhase(Phase::Failed, tr(STR_OTA_NO_HOST));
-    return false;
+  if (WiFi.status() == WL_CONNECTED) {
+    startServer();
+    return;
   }
+  // No network yet: ask the user to pick one instead of dead-ending on a
+  // "connect WiFi" message.
+  auto wifi = std::make_unique<WifiSelectionActivity>(renderer, mappedInput, true);
+  startActivityForResult(std::move(wifi), [this](const ActivityResult& result) {
+    if (!result.isCancelled && std::holds_alternative<WifiResult>(result.data) &&
+        std::get<WifiResult>(result.data).connected) {
+      startServer();
+    } else {
+      state_ = State::Error;
+      requestUpdate();
+    }
+  });
+}
+
+void OnlineUpdateActivity::onExit() {
+  stopServer();
+  Activity::onExit();
+}
+
+void OnlineUpdateActivity::startServer() {
+  state_ = State::ServerStarting;
+  requestUpdate();
+  webServer_.reset(new CrossPointWebServer());
+  webServer_->begin();
+  state_ = webServer_->isRunning() ? State::ServerRunning : State::Error;
+  requestUpdate();
+}
+
+void OnlineUpdateActivity::stopServer() {
+  if (webServer_) {
+    webServer_->stop();
+    webServer_.reset();
+  }
+}
+
+std::string OnlineUpdateActivity::endpointUrl() const {
   if (WiFi.status() != WL_CONNECTED) {
-    setPhase(Phase::Failed, tr(STR_OTA_NO_WIFI));
-    return false;
+    return {};
   }
-
-  const std::string manifestUrl = config_.baseUrl + "/api/v1/ota/latest";
-  std::string body;
-  if (!HttpDownloader::fetchUrl(manifestUrl, body)) {
-    setPhase(Phase::Failed, tr(STR_OTA_NETWORK_ERROR));
-    return false;
-  }
-
-  JsonDocument doc;
-  if (deserializeJson(doc, body.c_str()) != DeserializationError::Ok) {
-    setPhase(Phase::Failed, tr(STR_OTA_BAD_MANIFEST));
-    return false;
-  }
-
-  remoteVersion_ = std::string(doc["version"] | "");
-  std::string url = std::string(doc["url"] | "");
-  if (remoteVersion_.empty() || url.empty()) {
-    setPhase(Phase::Failed, tr(STR_OTA_BAD_MANIFEST));
-    return false;
-  }
-  if (url.rfind("http", 0) != 0) {
-    url = config_.baseUrl + url;
-  }
-  downloadUrl_ = url;
-
-  const std::string current = shortVersion(esp_app_get_description()->version);
-  LOG_INF("OTA", "current=%s remote=%s url=%s", current.c_str(), remoteVersion_.c_str(),
-          downloadUrl_.c_str());
-  if (current == remoteVersion_) {
-    setPhase(Phase::UpToDate, tr(STR_OTA_UP_TO_DATE));
-    return false;
-  }
-  return true;
-}
-
-bool OnlineUpdateActivity::downloadImage() {
-  setPhase(Phase::Downloading, tr(STR_OTA_DOWNLOADING));
-  if (!Storage.ensureDirectoryExists("/system/.crosspoint/ota")) {
-    setPhase(Phase::Failed, tr(STR_OTA_SD_ERROR));
-    return false;
-  }
-  Storage.remove(kStagingPath);
-
-  const auto result = HttpDownloader::downloadToFile(
-      downloadUrl_, kStagingPath, [this](size_t done, size_t total) {
-        percent_ = total > 0 ? static_cast<int>(done * 100 / total) : 0;
-        requestUpdate();
-      });
-  if (result != HttpDownloader::OK) {
-    setPhase(Phase::Failed, tr(STR_OTA_DOWNLOAD_FAILED));
-    return false;
-  }
-  return true;
-}
-
-bool OnlineUpdateActivity::flashImage() {
-  setPhase(Phase::Verifying, tr(STR_OTA_VERIFYING));
-  const esp_partition_t* target = esp_ota_get_next_update_partition(nullptr);
-  const size_t slotSize = target != nullptr ? target->size : 0;
-
-  const auto valid = firmware_flash::validateImageFile(kStagingPath, slotSize);
-  if (valid != firmware_flash::Result::OK) {
-    LOG_ERR("OTA", "validate failed: %s", firmware_flash::resultName(valid));
-    setPhase(Phase::Failed, firmware_flash::resultName(valid));
-    return false;
-  }
-
-  setPhase(Phase::Writing, tr(STR_OTA_WRITING));
-  percent_ = 0;
-  const auto written = firmware_flash::flashFromSdPath(kStagingPath, nullptr, nullptr, true);
-  if (written != firmware_flash::Result::OK) {
-    LOG_ERR("OTA", "flash failed: %s", firmware_flash::resultName(written));
-    setPhase(Phase::Failed, firmware_flash::resultName(written));
-    return false;
-  }
-
-  Storage.remove(kStagingPath);
-  setPhase(Phase::Done, tr(STR_OTA_DONE));
-  rebootPending_ = true;
-  return true;
-}
-
-void OnlineUpdateActivity::runUpdate() {
-  setPhase(Phase::Checking, tr(STR_OTA_CHECKING));
-  if (!fetchManifest()) {
-    return;
-  }
-  if (!downloadImage()) {
-    return;
-  }
-  flashImage();
+  return "http://" + std::string(WiFi.localIP().toString().c_str()) + "/ota";
 }
 
 void OnlineUpdateActivity::loop() {
-  if (rebootPending_) {
-    static unsigned long doneAt = 0;
-    if (doneAt == 0) {
-      doneAt = millis();
-      requestUpdateAndWait();
-    } else if (millis() - doneAt > 1200) {
+  if (state_ == State::Rebooting) {
+    if (millis() - rebootAt_ > 1500) {
       ESP.restart();
     }
-    return;
-  }
-
-  if (workPending_) {
-    workPending_ = false;
-    runUpdate();
     return;
   }
 
@@ -174,11 +80,27 @@ void OnlineUpdateActivity::loop() {
     finish();
     return;
   }
-  if (mappedInput.wasPressed(MappedInputManager::Button::Confirm)) {
-    if (phase_ != Phase::Downloading && phase_ != Phase::Writing) {
-      workPending_ = true;
-      requestUpdate();
+
+  if (state_ != State::ServerRunning || !webServer_) {
+    return;
+  }
+
+  esp_task_wdt_reset();
+  for (int i = 0; i < 40 && webServer_->isRunning(); ++i) {
+    webServer_->handleClient();
+    if ((i & 0x07) == 0x07) {
+      esp_task_wdt_reset();
     }
+  }
+
+  // A finished upload is validated and flashed from here, so the panel can show
+  // progress and the HTTP request has already returned.
+  if (webServer_->processPendingOta()) {
+    state_ = State::Rebooting;
+    rebootAt_ = millis();
+    requestUpdateAndWait();
+  } else if (webServer_->otaState().stage == CrossPointWebServer::OtaStage::Failed) {
+    requestUpdate();
   }
 }
 
@@ -190,25 +112,49 @@ void OnlineUpdateActivity::render(RenderLock&&) {
                  tr(STR_ONLINE_UPDATE));
 
   const int left = metrics.contentSidePadding;
+  const int contentWidth = width - left * 2;
   const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
   int y = metrics.topPadding + metrics.headerHeight + 24;
 
-  renderer.drawText(UI_10_FONT_ID, left, y, message_.c_str());
-  y += lineHeight + 10;
+  if (state_ == State::Error) {
+    renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_OTA_NO_WIFI));
+  } else if (state_ == State::ServerStarting) {
+    renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_OTA_STARTING));
+  } else if (state_ == State::Rebooting) {
+    renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_OTA_DONE));
+  } else {
+    renderer.drawText(UI_10_FONT_ID, left, y, tr(STR_OTA_OPEN_BROWSER));
+    y += lineHeight + 8;
+    const std::string url = endpointUrl();
+    renderer.drawText(UI_10_FONT_ID, left, y, url.c_str());
+    y += lineHeight + 12;
 
-  if (phase_ == Phase::Downloading && percent_ > 0) {
-    char progress[16];
-    snprintf(progress, sizeof(progress), "%d%%", percent_);
-    renderer.drawText(UI_10_FONT_ID, left, y, progress);
-    y += lineHeight + 6;
+    const auto ota = webServer_ ? webServer_->otaState() : CrossPointWebServer::OtaState{};
+    const char* stageText = tr(STR_OTA_WAITING_UPLOAD);
+    if (ota.stage == CrossPointWebServer::OtaStage::Receiving) {
+      stageText = tr(STR_OTA_RECEIVING);
+    } else if (ota.stage == CrossPointWebServer::OtaStage::Verifying) {
+      stageText = tr(STR_OTA_VERIFYING);
+    } else if (ota.stage == CrossPointWebServer::OtaStage::Writing) {
+      stageText = tr(STR_OTA_WRITING);
+    } else if (ota.stage == CrossPointWebServer::OtaStage::Failed) {
+      stageText = tr(STR_OTA_FAILED);
+    } else if (ota.stage == CrossPointWebServer::OtaStage::Done) {
+      stageText = tr(STR_OTA_DONE);
+    }
+
+    std::string status = stageText;
+    if (ota.stage == CrossPointWebServer::OtaStage::Receiving) {
+      status += " " + std::to_string(ota.percent) + "%";
+    }
+    renderer.drawText(UI_10_FONT_ID, left, y, status.c_str());
+    y += lineHeight + 8;
+
+    const char* hint = tr(STR_OTA_KEEP_POWER);
+    renderer.drawText(SMALL_FONT_ID, left, y, renderer.truncatedText(SMALL_FONT_ID, hint, contentWidth).c_str());
   }
 
-  if (!remoteVersion_.empty()) {
-    const std::string line = std::string(tr(STR_OTA_VERSION)) + " " + remoteVersion_;
-    renderer.drawText(SMALL_FONT_ID, left, y, line.c_str());
-  }
-
-  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_OTA_CHECK), "", "");
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
 }

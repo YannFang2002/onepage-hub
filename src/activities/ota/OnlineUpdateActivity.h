@@ -1,39 +1,34 @@
 #pragma once
 
+#include <memory>
 #include <string>
 
 #include "activities/Activity.h"
-#include "agent/AgentConfig.h"
 
-// Online update over the LAN: ask the host bridge (the same address the agent
-// uses) for the newest firmware, download it from there, then hand the image to
-// FirmwareFlasher. No cloud, no GitHub, nothing outside the local network.
+class CrossPointWebServer;
+
+// Online update over the LAN: this app just hosts the device's own web server and
+// exposes /ota, so a phone or PC on the same network can upload a firmware image.
+// The flashing itself is done by FirmwareFlasher from this activity's loop.
 class OnlineUpdateActivity final : public Activity {
  public:
   explicit OnlineUpdateActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
       : Activity("OnlineUpdate", renderer, mappedInput) {}
+  ~OnlineUpdateActivity() override;
 
   void onEnter() override;
+  void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
 
  private:
-  enum class Phase { Idle, Checking, UpToDate, Downloading, Verifying, Writing, Done, Failed };
+  enum class State { WifiWait, ServerStarting, ServerRunning, Rebooting, Error };
 
-  AgentConfig config_;
-  Phase phase_ = Phase::Idle;
-  std::string message_;
-  std::string remoteVersion_;
-  std::string downloadUrl_;
-  int percent_ = 0;
-  bool workPending_ = false;
-  bool rebootPending_ = false;
+  State state_ = State::WifiWait;
+  std::unique_ptr<CrossPointWebServer> webServer_;
+  unsigned long rebootAt_ = 0;
 
-  static constexpr const char* kStagingPath = "/system/.crosspoint/ota/firmware.bin";
-
-  void setPhase(Phase phase, const std::string& message);
-  void runUpdate();
-  bool fetchManifest();
-  bool downloadImage();
-  bool flashImage();
+  void startServer();
+  void stopServer();
+  std::string endpointUrl() const;
 };

@@ -68,7 +68,31 @@ class CrossPointWebServer {
   // Get the port number
   uint16_t getPort() const { return port; }
 
+  // --- OTA: firmware upload through the device's own web UI -----------------
+  enum class OtaStage : uint8_t { Idle, Receiving, Ready, Verifying, Writing, Done, Failed };
+  struct OtaState {
+    OtaStage stage = OtaStage::Idle;
+    size_t received = 0;
+    int percent = 0;
+    String message;
+  };
+
+  const OtaState& otaState() const { return otaState_; }
+  // Empty password leaves the OTA page open (LAN only).
+  void setOtaPassword(const String& password) { otaPassword = password; }
+  // Validate + flash a finished upload; call from the owning activity's loop.
+  bool processPendingOta();
+
  private:
+  OtaState otaState_;
+  String otaPassword;
+  HalFile otaFile;
+  bool otaUploading = false;
+  bool otaAuthorized();
+  void handleOtaPage();
+  void handleOtaStatus();
+  void handleOtaUpload();
+  void handleOtaPost();
   std::unique_ptr<WebServer> server = nullptr;
   std::unique_ptr<WebSocketsServer> wsServer = nullptr;
   bool running = false;
