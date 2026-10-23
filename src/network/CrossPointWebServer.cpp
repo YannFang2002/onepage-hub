@@ -380,6 +380,31 @@ void CrossPointWebServer::handleStatus() const {
   doc["device"] = gpio.deviceIsX3() ? "X3" : "X4";
 #endif
 
+  // OTA diagnostics: which slot is running and whether it has been confirmed.
+  // After an OTA the reboot lands on the other slot, so this is how a client can
+  // tell "the update really applied" without USB access.
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  if (running != nullptr) {
+    doc["slot"] = running->label;
+  }
+  esp_ota_img_states_t imageState = ESP_OTA_IMG_UNDEFINED;
+  if (running != nullptr && esp_ota_get_state_partition(running, &imageState) == ESP_OK) {
+    switch (imageState) {
+      case ESP_OTA_IMG_NEW: doc["otaState"] = "new"; break;
+      case ESP_OTA_IMG_PENDING_VERIFY: doc["otaState"] = "pending"; break;
+      case ESP_OTA_IMG_VALID: doc["otaState"] = "valid"; break;
+      case ESP_OTA_IMG_INVALID: doc["otaState"] = "invalid"; break;
+      case ESP_OTA_IMG_ABORTED: doc["otaState"] = "aborted"; break;
+      default: doc["otaState"] = "undefined"; break;
+    }
+  } else {
+    doc["otaState"] = "undefined";
+  }
+  const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+  if (next != nullptr) {
+    doc["nextSlot"] = next->label;
+  }
+
   String json;
   serializeJson(doc, json);
   server->send(200, "application/json", json);
@@ -2046,6 +2071,9 @@ bool CrossPointWebServer::processPendingOta() {
 
   otaState_.stage = OtaStage::Writing;
   otaState_.message = "写入固件";
+  if (target != nullptr) {
+    otaState_.slot = target->label;
+  }
   const auto written = firmware_flash::flashFromSdPath(kOtaStagingPath, nullptr, nullptr, true);
   if (written != firmware_flash::Result::OK) {
     otaState_.stage = OtaStage::Failed;

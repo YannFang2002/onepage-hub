@@ -365,8 +365,21 @@ void CrossPointWebServerActivity::loop() {
       // A firmware image uploaded from the web UI lands on the SD card; validate
       // and flash it here so the panel can show progress, then restart.
       if (webServer && webServer->isRunning() && webServer->processPendingOta()) {
-        LOG_INF("WEBACT", "OTA image written, restarting");
-        delay(800);
+        // Hold the result on screen long enough to actually read it, and say
+        // which slot was written (that is what proves the update applied).
+        const std::string written = webServer->otaState().slot.c_str();
+        renderer.clearScreen();
+        renderer.drawCenteredText(UI_10_FONT_ID, renderer.getScreenHeight() / 2 - 24,
+                                  tr(STR_OTA_DONE));
+        if (!written.empty()) {
+          const std::string line = std::string(tr(STR_OTA_WRITTEN_TO)) + " " + written;
+          renderer.drawCenteredText(SMALL_FONT_ID, renderer.getScreenHeight() / 2 + 8, line.c_str());
+        }
+        renderer.drawCenteredText(SMALL_FONT_ID, renderer.getScreenHeight() / 2 + 40,
+                                  tr(STR_OTA_RESTARTING));
+        renderer.displayBuffer();
+        LOG_INF("WEBACT", "OTA written to %s, restarting", written.c_str());
+        delay(4000);
         ESP.restart();
       }
     }

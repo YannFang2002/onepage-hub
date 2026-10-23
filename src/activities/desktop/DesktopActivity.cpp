@@ -43,17 +43,13 @@ void DesktopActivity::moveHorizontal(int delta) {
   if (appCount <= 0) {
     return;
   }
-  const int rowStart = (selectorIndex / kColumns) * kColumns;
-  const int rowCount = std::min(kColumns, appCount - rowStart);
-  if (rowCount <= 1) {
+  // Left/Right walk the whole grid in row-major order and wrap at the end:
+  // 1 2 3 4 5 6 7 8 9 -> 1.
+  int next = ((selectorIndex + delta) % appCount + appCount) % appCount;
+  if (next == selectorIndex) {
     return;
   }
-  const int column = selectorIndex - rowStart;
-  const int next = ((column + delta) % rowCount + rowCount) % rowCount;
-  if (next == column) {
-    return;
-  }
-  selectorIndex = rowStart + next;
+  selectorIndex = next;
   requestUpdate();
 }
 
@@ -61,23 +57,33 @@ void DesktopActivity::moveVertical(int delta) {
   if (appCount <= 0) {
     return;
   }
+  // Up/Down walk the grid in column-major order and wrap at the end:
+  // 1 4 7 2 5 8 3 6 9 -> 1. Cells missing from a partial last row are skipped.
   const int rows = (appCount + kColumns - 1) / kColumns;
-  if (rows <= 1) {
+  int order[kColumns * 16];
+  int total = 0;
+  for (int column = 0; column < kColumns; ++column) {
+    for (int row = 0; row < rows; ++row) {
+      const int cell = row * kColumns + column;
+      if (cell < appCount && total < static_cast<int>(sizeof(order) / sizeof(order[0]))) {
+        order[total++] = cell;
+      }
+    }
+  }
+  if (total <= 1) {
     return;
   }
-  const int column = selectorIndex % kColumns;
-  int row = selectorIndex / kColumns;
-  // Skip empty cells in a partial last row so the cursor never lands past the end.
-  for (int step = 0; step < rows; ++step) {
-    row = ((row + delta) % rows + rows) % rows;
-    const int candidate = row * kColumns + column;
-    if (candidate < appCount) {
-      if (candidate != selectorIndex) {
-        selectorIndex = candidate;
-        requestUpdate();
-      }
-      return;
+  int position = 0;
+  for (int i = 0; i < total; ++i) {
+    if (order[i] == selectorIndex) {
+      position = i;
+      break;
     }
+  }
+  position = ((position + delta) % total + total) % total;
+  if (order[position] != selectorIndex) {
+    selectorIndex = order[position];
+    requestUpdate();
   }
 }
 void DesktopActivity::openSelected() {

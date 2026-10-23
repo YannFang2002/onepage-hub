@@ -12,6 +12,7 @@
 #include <HalTiltSensor.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <esp_ota_ops.h>
 #include <SPI.h>
 #include <WiFi.h>
 #include <builtinFonts/all.h>
@@ -296,6 +297,19 @@ void setupDisplayAndFonts(bool seamless = false) {
   display.begin(seamless);
   renderer.begin();
   activityManager.begin();
+
+  // A freshly OTA'd image boots as PENDING_VERIFY; without this confirmation the
+  // bootloader rolls it back on the next reset. Do it once the app has started.
+  {
+    const esp_partition_t* runningSlot = esp_ota_get_running_partition();
+    esp_ota_img_states_t imageState;
+    if (runningSlot != nullptr && esp_ota_get_state_partition(runningSlot, &imageState) == ESP_OK &&
+        imageState == ESP_OTA_IMG_PENDING_VERIFY) {
+      if (esp_ota_mark_app_valid_cancel_rollback() == ESP_OK) {
+        LOG_INF("MAIN", "OTA image confirmed on %s", runningSlot->label);
+      }
+    }
+  }
   LOG_DBG("MAIN", "Display initialized");
 
 

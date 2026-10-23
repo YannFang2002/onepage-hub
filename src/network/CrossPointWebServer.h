@@ -75,6 +75,7 @@ class CrossPointWebServer {
     size_t received = 0;
     int percent = 0;
     String message;
+    String slot;  // partition label written, e.g. "app1"
   };
 
   const OtaState& otaState() const { return otaState_; }
