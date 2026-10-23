@@ -89,7 +89,6 @@ class CrossPointWebServer {
   HalFile otaFile;
   bool otaUploading = false;
   bool otaAuthorized();
-  void handleOtaPage();
   void handleOtaStatus();
   void handleOtaUpload();
   void handleOtaPost();

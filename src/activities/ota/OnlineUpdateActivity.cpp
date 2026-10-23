@@ -65,7 +65,7 @@ std::string OnlineUpdateActivity::endpointUrl() const {
   if (WiFi.status() != WL_CONNECTED) {
     return {};
   }
-  return "http://" + std::string(WiFi.localIP().toString().c_str()) + "/ota";
+  return "http://" + std::string(WiFi.localIP().toString().c_str()) + "/settings";
 }
 
 void OnlineUpdateActivity::loop() {

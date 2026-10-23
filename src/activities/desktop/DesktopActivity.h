@@ -23,5 +23,7 @@ class DesktopActivity final : public Activity {
 
   void refreshAppCount();
   void moveSelection(int delta);
+  void moveHorizontal(int delta);
+  void moveVertical(int delta);
   void openSelected();
 };

@@ -303,6 +303,66 @@
   <div id="wifi-container"></div>
   <div id="opds-container"></div>
 
+  <div class="card" id="firmware-card">
+    <h2>Firmware Update</h2>
+    <p style="color:#7f8c8d;margin-top:0;">Upload a .bin built for this device. The reader verifies the image, flashes it and restarts.</p>
+    <form id="ota-form" enctype="multipart/form-data">
+      <input type="file" name="firmware" accept=".bin" required id="ota-file">
+      <button class="save-btn" type="submit" id="ota-btn" style="margin-top:12px;">Upload &amp; Update</button>
+    </form>
+    <div style="margin-top:12px;background:#ecf0f1;border-radius:6px;height:10px;overflow:hidden;">
+      <div id="ota-fill" style="height:100%;width:0;background:#2ecc71;transition:width .2s;"></div>
+    </div>
+    <p id="ota-status" style="color:#7f8c8d;margin:8px 0 0;">Idle</p>
+  </div>
+  <script>
+    (function () {
+      const form = document.getElementById('ota-form');
+      const btn = document.getElementById('ota-btn');
+      const fill = document.getElementById('ota-fill');
+      const status = document.getElementById('ota-status');
+      let polling = null;
+      let done = false;
+
+      function poll() {
+        fetch('/api/ota/status')
+          .then((r) => r.json())
+          .then((s) => {
+            if (typeof s.percent === 'number') fill.style.width = s.percent + '%';
+            status.textContent = s.stage + (s.percent ? ' · ' + s.percent + '%' : '') +
+                                 (s.message ? ' · ' + s.message : '');
+            if (s.stage === 'Done') {
+              status.textContent = 'Update complete — the reader is restarting.';
+              done = true;
+              return;
+            }
+            if (s.stage === 'Failed') { done = true; btn.disabled = false; return; }
+            polling = setTimeout(poll, 700);
+          })
+          .catch(() => { polling = setTimeout(poll, 1500); });
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        if (done) { done = false; }
+        btn.disabled = true;
+        fill.style.width = '0%';
+        status.textContent = 'Uploading…';
+        const data = new FormData(form);
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/ota');
+        xhr.upload.onprogress = function (e) {
+          if (e.lengthComputable) fill.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+        };
+        xhr.onload = function () { poll(); };
+        xhr.onerror = function () { status.textContent = 'Upload failed'; btn.disabled = false; };
+        xhr.send(data);
+        poll();
+      });
+    })();
+  </script>
+
+
   <div class="card">
     <p style="text-align: center; color: #95a5a6; margin: 0;">
       CrossPoint E-Reader • Open Source

@@ -36,6 +36,50 @@ void DesktopActivity::moveSelection(int delta) {
   requestUpdate();
 }
 
+// Left/Right wrap inside the current row only; Up/Down wrap inside the current
+// column only. The old linear +/-1 and +/-kColumns walked the whole list, so a
+// press at a row/column edge jumped into a different row/column.
+void DesktopActivity::moveHorizontal(int delta) {
+  if (appCount <= 0) {
+    return;
+  }
+  const int rowStart = (selectorIndex / kColumns) * kColumns;
+  const int rowCount = std::min(kColumns, appCount - rowStart);
+  if (rowCount <= 1) {
+    return;
+  }
+  const int column = selectorIndex - rowStart;
+  const int next = ((column + delta) % rowCount + rowCount) % rowCount;
+  if (next == column) {
+    return;
+  }
+  selectorIndex = rowStart + next;
+  requestUpdate();
+}
+
+void DesktopActivity::moveVertical(int delta) {
+  if (appCount <= 0) {
+    return;
+  }
+  const int rows = (appCount + kColumns - 1) / kColumns;
+  if (rows <= 1) {
+    return;
+  }
+  const int column = selectorIndex % kColumns;
+  int row = selectorIndex / kColumns;
+  // Skip empty cells in a partial last row so the cursor never lands past the end.
+  for (int step = 0; step < rows; ++step) {
+    row = ((row + delta) % rows + rows) % rows;
+    const int candidate = row * kColumns + column;
+    if (candidate < appCount) {
+      if (candidate != selectorIndex) {
+        selectorIndex = candidate;
+        requestUpdate();
+      }
+      return;
+    }
+  }
+}
 void DesktopActivity::openSelected() {
   size_t count = 0;
   const AppDescriptor* apps = appList(count);
@@ -55,16 +99,16 @@ void DesktopActivity::loop() {
   // Right/Left keys (MappedInputManager::mapButton), so a single Left/Right
   // press would move one column AND one row at once.
   if (mappedInput.wasPressed(MappedInputManager::Button::Right)) {
-    moveSelection(1);
+    moveHorizontal(1);
   }
   if (mappedInput.wasPressed(MappedInputManager::Button::Left)) {
-    moveSelection(-1);
+    moveHorizontal(-1);
   }
   if (mappedInput.wasPressed(MappedInputManager::Button::Down)) {
-    moveSelection(kColumns);
+    moveVertical(1);
   }
   if (mappedInput.wasPressed(MappedInputManager::Button::Up)) {
-    moveSelection(-kColumns);
+    moveVertical(-1);
   }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {

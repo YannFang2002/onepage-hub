@@ -178,7 +178,6 @@ void CrossPointWebServer::begin() {
   server->on("/api/wifi/delete", HTTP_POST, [this] { handleDeleteWifiNetwork(); });
 
   // Firmware update over the device's own web UI
-  server->on("/ota", HTTP_GET, [this] { handleOtaPage(); });
   server->on("/api/ota/status", HTTP_GET, [this] { handleOtaStatus(); });
   server->on("/api/ota", HTTP_POST, [this] { handleOtaPost(); }, [this] { handleOtaUpload(); });
 
@@ -1925,31 +1924,6 @@ void CrossPointWebServer::handleFontDelete() {
 namespace {
 constexpr char kOtaStagingPath[] = "/system/.crosspoint/ota/firmware.bin";
 
-const char kOtaPageHtml[] =
-    "<!doctype html><meta charset=utf-8>"
-    "<meta name=viewport content='width=device-width,initial-scale=1'>"
-    "<title>OnePage 在线升级</title>"
-    "<style>body{font-family:system-ui,sans-serif;max-width:34rem;margin:2rem auto;padding:0 1rem}"
-    "#bar{height:1.2rem;background:#eee;border-radius:6px;overflow:hidden;margin:.6rem 0}"
-    "#fill{height:100%;width:0;background:#333;transition:width .2s}"
-    "button{padding:.7rem 1.2rem;font-size:1rem;margin-top:.8rem}"
-    "pre{background:#f6f6f6;padding:.8rem;border-radius:6px;white-space:pre-wrap}</style>"
-    "<h2>OnePage 在线升级</h2>"
-    "<p>选择固件文件（.bin），上传完成后设备会自动校验并写入，然后重启。</p>"
-    "<form id=f enctype=multipart/form-data method=post action=/api/ota>"
-    "<input type=file name=firmware accept='.bin' required> "
-    "<button type=submit>上传并升级</button></form>"
-    "<div id=bar><div id=fill></div></div>"
-    "<pre id=log>等待上传…</pre>"
-    "<script>"
-    "const log=document.getElementById('log'),fill=document.getElementById('fill');"
-    "function poll(){fetch('/api/ota/status').then(r=>r.json()).then(s=>{"
-    "if(s.percent!=null)fill.style.width=s.percent+'%';"
-    "log.textContent=`${s.stage}  ${s.percent||0}%  ${s.message||''}`;"
-    "if(s.stage!=='Done'&&s.stage!=='Failed')setTimeout(poll,700);}).catch(()=>setTimeout(poll,1500));}"
-    "document.getElementById('f').addEventListener('submit',()=>{setTimeout(poll,300);});"
-    "poll();"
-    "</script>";
 }  // namespace
 
 bool CrossPointWebServer::otaAuthorized() {
@@ -1961,13 +1935,6 @@ bool CrossPointWebServer::otaAuthorized() {
   }
   server->requestAuthentication();
   return false;
-}
-
-void CrossPointWebServer::handleOtaPage() {
-  if (!otaAuthorized()) {
-    return;
-  }
-  server->send(200, "text/html", kOtaPageHtml);
 }
 
 void CrossPointWebServer::handleOtaStatus() {
