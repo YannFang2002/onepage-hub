@@ -69,9 +69,13 @@ jobs:
       - name: Generate manifest.json
         run: node .github/gen-manifest.mjs --version "${GITHUB_REF_NAME}" --bin "${BIN}"
 
+      - name: Stage app-only OTA image
+        run: cp .pio/build/onepage/firmware.bin firmware.bin
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ env.BIN }}
+            firmware.bin
             manifest.json
