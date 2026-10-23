@@ -1,7 +1,6 @@
 #include "AppRegistry.h"
 
 #include "activities/agent_remote/AgentRemoteActivity.h"
-#include "activities/ota/OnlineUpdateActivity.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/home/HomeActivity.h"
 #include "activities/network/CrossPointWebServerActivity.h"
@@ -39,9 +38,6 @@ std::unique_ptr<Activity> createAgentRemote(GfxRenderer& renderer, MappedInputMa
   return std::make_unique<AgentRemoteActivity>(renderer, mappedInput);
 }
 
-std::unique_ptr<Activity> createOnlineUpdate(GfxRenderer& renderer, MappedInputManager& mappedInput) {
-  return std::make_unique<OnlineUpdateActivity>(renderer, mappedInput);
-}
 
 // Display order == tile order. To add an app:
 //   1. append a value to AppId (never renumber existing ones)
@@ -55,7 +51,6 @@ constexpr AppDescriptor kApps[] = {
     {AppId::Recorder, StrId::STR_VOICE_RECORDER, UIIcon::Mic, AppRoot::Desktop, &createRecorder},
     {AppId::FileManager, StrId::STR_FILE_MANAGER, UIIcon::Folder, AppRoot::Desktop, &createFileManager},
     {AppId::AgentRemote, StrId::STR_AGENT_REMOTE, UIIcon::Agent, AppRoot::Desktop, &createAgentRemote},
-    {AppId::OnlineUpdate, StrId::STR_ONLINE_UPDATE, UIIcon::OnlineUpdate, AppRoot::Desktop, &createOnlineUpdate},
 };
 
 }  // namespace

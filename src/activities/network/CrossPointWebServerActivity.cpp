@@ -361,6 +361,14 @@ void CrossPointWebServerActivity::loop() {
         }
       }
       lastHandleClientTime = millis();
+
+      // A firmware image uploaded from the web UI lands on the SD card; validate
+      // and flash it here so the panel can show progress, then restart.
+      if (webServer && webServer->isRunning() && webServer->processPendingOta()) {
+        LOG_INF("WEBACT", "OTA image written, restarting");
+        delay(800);
+        ESP.restart();
+      }
     }
 
     // Handle exit on Back button (also check outside loop)
