@@ -52,6 +52,11 @@ class CrossPointWebServerActivity final : public Activity {
   // Cached signal-strength bracket (0..4) for the WiFi indicator.
   int lastWifiBars = 0;
 
+  // True when this entry came from /system/.crosspoint/ota_resume. The marker is
+  // consumed here; the flag then drives auto-join and the host success packet.
+  bool otaResume = false;
+  bool otaNotified = false;
+
   void renderServerRunning() const;
   void renderWifiIndicator(int subHeaderTop) const;
 
@@ -59,6 +64,7 @@ class CrossPointWebServerActivity final : public Activity {
   void onWifiSelectionComplete(bool connected);
   void startAccessPoint();
   void startWebServer();
+  void recordOtaSuccess();
 
  public:
   explicit CrossPointWebServerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)

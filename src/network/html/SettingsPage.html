@@ -323,28 +323,58 @@
       const status = document.getElementById('ota-status');
       let polling = null;
       let done = false;
+      let waitingForReboot = false;
+      let startedAt = 0;
+
+      function showLastResult(s) {
+        if (!s.lastResult || !s.lastResult.ok) return false;
+        const version = s.lastResult.version || 'unknown';
+        const slot = s.lastResult.slot ? ' · ' + s.lastResult.slot : '';
+        status.textContent = 'Update applied: ' + version + slot;
+        done = true;
+        btn.disabled = false;
+        if (polling) { clearTimeout(polling); polling = null; }
+        return true;
+      }
 
       function poll() {
         fetch('/api/ota/status')
           .then((r) => r.json())
           .then((s) => {
+            if (showLastResult(s)) return;
             if (typeof s.percent === 'number') fill.style.width = s.percent + '%';
             status.textContent = s.stage + (s.percent ? ' · ' + s.percent + '%' : '') +
                                  (s.message ? ' · ' + s.message : '');
             if (s.stage === 'Done') {
-              status.textContent = 'Update complete — the reader is restarting.';
-              done = true;
+              status.textContent = 'Update complete — waiting for the reader to restart…';
+              waitingForReboot = true;
+              polling = setTimeout(poll, 2000);
               return;
             }
             if (s.stage === 'Failed') { done = true; btn.disabled = false; return; }
-            polling = setTimeout(poll, 700);
+            polling = setTimeout(poll, waitingForReboot ? 2000 : 700);
           })
-          .catch(() => { polling = setTimeout(poll, 1500); });
+          .catch(() => {
+            if (waitingForReboot) {
+              status.textContent = 'Waiting for the reader to come back…';
+              if (Date.now() - startedAt < 120000) {
+                polling = setTimeout(poll, 2000);
+              } else {
+                status.textContent = 'Reader did not come back; reload after it boots.';
+                done = true;
+                btn.disabled = false;
+              }
+            } else {
+              polling = setTimeout(poll, 1500);
+            }
+          });
       }
 
       form.addEventListener('submit', function (event) {
         event.preventDefault();
-        if (done) { done = false; }
+        done = false;
+        waitingForReboot = false;
+        startedAt = Date.now();
         btn.disabled = true;
         fill.style.width = '0%';
         status.textContent = 'Uploading…';
@@ -359,6 +389,12 @@
         xhr.send(data);
         poll();
       });
+
+      // A reopened settings page should still show the last OTA result.
+      fetch('/api/ota/status')
+        .then((r) => r.json())
+        .then((s) => { showLastResult(s); })
+        .catch(() => {});
     })();
   </script>
 

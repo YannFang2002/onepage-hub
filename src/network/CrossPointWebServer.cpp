@@ -1990,7 +1990,10 @@ void CrossPointWebServer::handleOtaStatus() {
   body += String(static_cast<unsigned>(otaState_.received));
   body += ",\"message\":\"";
   body += otaState_.message;
-  body += "\"}";
+  body += "\",\"lastResult\":";
+  const String lastResult = Storage.readFile("/system/.crosspoint/ota_result.json");
+  body += lastResult.isEmpty() ? String("null") : lastResult;
+  body += "}";
   server->send(200, "application/json", body);
 }
 
@@ -2005,6 +2008,8 @@ void CrossPointWebServer::handleOtaUpload() {
     otaState_ = OtaState();
     otaState_.stage = OtaStage::Receiving;
     otaUploading = false;
+    // A new upload invalidates the previous success banner.
+    Storage.remove("/system/.crosspoint/ota_result.json");
     Storage.ensureDirectoryExists("/system/.crosspoint/ota");
     Storage.remove(kOtaStagingPath);
     if (!Storage.openFileForWrite("OTA", kOtaStagingPath, otaFile)) {

@@ -11,15 +11,19 @@ static OnePageMdnsStub MDNS;
 #include <ESPmDNS.h>
 #endif
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <I18n.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 
 #include <cstddef>
+#include <cstring>
 
 #include "MappedInputManager.h"
 #include "NetworkModeSelectionActivity.h"
 #include "SilentRestart.h"
+#include "WifiCredentialStore.h"
 #include "WifiSelectionActivity.h"
 #include "activities/network/CalibreConnectActivity.h"
 #include "components/UITheme.h"
@@ -73,6 +77,16 @@ void CrossPointWebServerActivity::onEnter() {
 
   LOG_DBG("WEBACT", "Free heap at onEnter: %d bytes", ESP.getFreeHeap());
 
+  // Consume the OTA marker here rather than in main: only this activity knows
+  // that the right response is "auto-join the saved network, then report back",
+  // and keeping the marker until now means a failed launch can retry next boot.
+  otaResume = Storage.exists("/system/.crosspoint/ota_resume");
+  if (otaResume) {
+    Storage.remove("/system/.crosspoint/ota_resume");
+    LOG_INF("WEBACT", "OTA resume marker consumed; auto-joining saved network");
+  }
+  otaNotified = false;
+
   // Reset state
   state = WebServerActivityState::MODE_SELECTION;
   networkMode = NetworkMode::JOIN_NETWORK;
@@ -81,6 +95,20 @@ void CrossPointWebServerActivity::onEnter() {
   connectedSSID.clear();
   lastHandleClientTime = 0;
   requestUpdate();
+
+  if (otaResume) {
+    // Skip the mode chooser. JOIN_NETWORK launches WifiSelectionActivity with
+    // autoConnect enabled, which uses the last saved SSID; if there is none it
+    // falls back to the normal network list instead of failing silently.
+    // If the last-SSID field is empty (e.g. cleared by a previous forget) but
+    // credentials exist, promote the first one so the OTA path still auto-joins.
+    WIFI_STORE.loadFromFile();
+    if (WIFI_STORE.getLastConnectedSsid().empty() && !WIFI_STORE.getCredentials().empty()) {
+      WIFI_STORE.setLastConnectedSsid(WIFI_STORE.getCredentials().front().ssid);
+    }
+    onNetworkModeSelected(NetworkMode::JOIN_NETWORK);
+    return;
+  }
 
   // Launch network mode selection subactivity
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
@@ -262,6 +290,13 @@ void CrossPointWebServerActivity::startWebServer() {
     LOG_DBG("WEBACT", "Web server started successfully");
     lastWifiBars = isApMode ? 0 : barsForRssi(WiFi.RSSI(), 0);
 
+    // One-shot post-OTA result for the device's own web page. The browser tab
+    // that uploaded the image cannot survive the reboot, so persist what
+    // actually booted; the page polls /api/ota/status after reconnecting.
+    if (otaResume) {
+      recordOtaSuccess();
+    }
+
     // Force an immediate render since we're transitioning from a subactivity
     // that had its own rendering task. We need to make sure our display is shown.
     requestUpdate();
@@ -271,6 +306,27 @@ void CrossPointWebServerActivity::startWebServer() {
     // Go back on error
     onGoHome();
   }
+}
+
+void CrossPointWebServerActivity::recordOtaSuccess() {
+  if (!otaResume || otaNotified) {
+    return;
+  }
+  otaNotified = true;
+
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  const char* slot = running != nullptr ? running->label : "";
+  char payload[192];
+  snprintf(payload, sizeof(payload),
+           "{\"ok\":true,\"version\":\"%s\",\"slot\":\"%s\"}",
+           CROSSPOINT_VERSION, slot);
+
+  if (Storage.writeFile("/system/.crosspoint/ota_result.json", payload)) {
+    LOG_INF("WEBACT", "OTA result persisted: %s", payload);
+  } else {
+    LOG_ERR("WEBACT", "failed to persist OTA result");
+  }
+  otaResume = false;
 }
 
 void CrossPointWebServerActivity::loop() {

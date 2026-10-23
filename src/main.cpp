@@ -565,7 +565,8 @@ void setup() {
   if (Storage.exists("/system/.crosspoint/ota_resume")) {
     // Highest priority: an OTA restart must land back in the app that performed
     // the update, regardless of the wake reason or the boot-resume decision.
-    Storage.remove("/system/.crosspoint/ota_resume");
+    // The activity consumes the marker after reading it, so a failed launch
+    // leaves it for the next boot instead of silently returning to the desktop.
     LOG_INF("MAIN", "OTA resume: returning to device link");
     activityManager.launchApp(AppId::FileTransfer);
   } else if (recoveryFirmwareMode) {
