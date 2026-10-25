@@ -371,6 +371,8 @@ void CrossPointWebServer::handleStatus() const {
   doc["mode"] = apMode ? "AP" : "STA";
   doc["rssi"] = apMode ? 0 : WiFi.RSSI();
   doc["freeHeap"] = ESP.getFreeHeap();
+  doc["psramSize"] = ESP.getPsramSize();
+  doc["psramFree"] = ESP.getFreePsram();
   doc["uptime"] = millis() / 1000;
 #ifdef ONEPAGE_C61
   // This build targets the OnePage C61 board, not the stock X3/X4 readers. The
