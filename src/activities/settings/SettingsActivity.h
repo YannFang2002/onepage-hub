@@ -25,6 +25,7 @@ enum class SettingAction {
   DownloadFonts,
   BlePageTurner,
   SleepImage,
+  DeviceName,
 };
 
 struct SettingInfo {

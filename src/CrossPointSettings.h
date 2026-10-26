@@ -301,6 +301,8 @@ class CrossPointSettings {
   uint8_t bleDeviceAddrType = 0;
   uint8_t bleDeviceValid = 0;
   char bleDeviceName[24] = "";
+  // Name advertised over WiFi/BLE; also shown by the companion app.
+  char deviceName[32] = "OnePage Hub H1";
 #endif
 
   ~CrossPointSettings() = default;

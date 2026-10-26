@@ -184,6 +184,7 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
     doc["bleAddr"] = addrHex;
     doc["bleAddrType"] = s.bleDeviceAddrType;
     if (s.bleDeviceName[0]) doc["bleName"] = s.bleDeviceName;
+  if (s.deviceName[0]) doc["deviceName"] = s.deviceName;
   }
 #endif
 
@@ -335,6 +336,16 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
         const char* nm = doc["bleName"] | "";
         strncpy(s.bleDeviceName, nm, sizeof(s.bleDeviceName) - 1);
         s.bleDeviceName[sizeof(s.bleDeviceName) - 1] = '\0';
+
+  const char* devName = doc["deviceName"] | "";
+  // Migrate the short-lived "H1" default to the full product name.
+  if (strcmp(devName, "H1") == 0) {
+    strncpy(s.deviceName, "OnePage Hub H1", sizeof(s.deviceName) - 1);
+    s.deviceName[sizeof(s.deviceName) - 1] = '\0';
+  } else if (devName[0] != '\0') {
+    strncpy(s.deviceName, devName, sizeof(s.deviceName) - 1);
+    s.deviceName[sizeof(s.deviceName) - 1] = '\0';
+  }
       }
     }
   }

@@ -14,6 +14,7 @@
 #endif
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
+#include "activities/util/KeyboardEntryActivity.h"
 #include "FontDownloadActivity.h"
 #include "FontSelectionActivity.h"
 #include "KOReaderSettingsActivity.h"
@@ -84,6 +85,7 @@ void SettingsActivity::rebuildSettingsLists() {
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CLEAR_READING_CACHE, SettingAction::ClearCache));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_SD_FIRMWARE_UPDATE, SettingAction::SdFirmwareUpdate));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_DEVICE_NAME, SettingAction::DeviceName));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_LANGUAGE, SettingAction::Language));
   // Insert "Manage Fonts" right after the font family setting so users discover it naturally
   readerSettings.insert(readerSettings.begin() + 1,
@@ -325,6 +327,26 @@ void SettingsActivity::toggleCurrentSetting() {
       case SettingAction::Language:
         startActivityForResult(std::make_unique<LanguageSelectActivity>(renderer, mappedInput), resultHandler);
         break;
+      case SettingAction::DeviceName: {
+        const std::string current =
+            SETTINGS.deviceName[0] != '\0' ? std::string(SETTINGS.deviceName) : std::string("H1");
+        startActivityForResult(
+            std::make_unique<KeyboardEntryActivity>(renderer, mappedInput, tr(STR_DEVICE_NAME), current, 31,
+                                                    InputType::Text),
+            [this](const ActivityResult& result) {
+              if (!result.isCancelled) {
+                const auto& text = std::get<KeyboardResult>(result.data).text;
+                if (!text.empty()) {
+                  strncpy(SETTINGS.deviceName, text.c_str(), sizeof(SETTINGS.deviceName) - 1);
+                  SETTINGS.deviceName[sizeof(SETTINGS.deviceName) - 1] = '\0';
+                  SETTINGS.saveToFile();
+                }
+              }
+              rebuildSettingsLists();
+              requestUpdate();
+            });
+        break;
+      }
       case SettingAction::SleepImage:
         startActivityForResult(std::make_unique<SleepImageSelectActivity>(renderer, mappedInput),
                                [this](const ActivityResult&) {

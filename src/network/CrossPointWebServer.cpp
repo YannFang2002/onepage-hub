@@ -315,7 +315,7 @@ void CrossPointWebServer::handleClient() {
         if (strcmp(buffer, "hello") == 0) {
           String hostname = WiFi.getHostname();
           if (hostname.isEmpty()) {
-            hostname = "crosspoint";
+            hostname = "onepage-hub";
           }
           String message = "crosspoint (on " + hostname + ");" + String(wsPort);
           udp.beginPacket(udp.remoteIP(), udp.remotePort());
@@ -377,7 +377,9 @@ void CrossPointWebServer::handleStatus() const {
 #ifdef ONEPAGE_C61
   // This build targets the OnePage C61 board, not the stock X3/X4 readers. The
   // companion app shows this string, so report the product name instead.
-  doc["device"] = "O1";
+    // `device` is the model, `name` is the user-editable device name.
+  doc["device"] = "H1";
+  doc["name"] = SETTINGS.deviceName[0] != '\0' ? SETTINGS.deviceName : "OnePage Hub H1";
 #else
   doc["device"] = gpio.deviceIsX3() ? "X3" : "X4";
 #endif

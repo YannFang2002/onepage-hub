@@ -14,6 +14,7 @@ static OnePageMdnsStub MDNS;
 #include <HalStorage.h>
 #include <I18n.h>
 #include <WiFi.h>
+#include "CrossPointSettings.h"
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 
@@ -30,9 +31,10 @@ static OnePageMdnsStub MDNS;
 
 namespace {
 // AP Mode configuration
-constexpr const char* AP_SSID = "CrossPoint-Reader";
+// Hotspot SSID follows the user-configurable device name.
+static const char* apSsid() { return SETTINGS.deviceName[0] != '\0' ? SETTINGS.deviceName : "OnePage Hub H1"; }
 constexpr const char* AP_PASSWORD = nullptr;  // Open network for ease of use
-constexpr const char* AP_HOSTNAME = "crosspoint";
+constexpr const char* AP_HOSTNAME = "onepage-hub";
 constexpr uint8_t AP_CHANNEL = 1;
 constexpr uint8_t AP_MAX_CONNECTIONS = 4;
 constexpr int QR_CODE_WIDTH = 198;
@@ -254,10 +256,10 @@ void CrossPointWebServerActivity::startAccessPoint() {
   // Start soft AP
   bool apStarted;
   if (AP_PASSWORD && strlen(AP_PASSWORD) >= 8) {
-    apStarted = WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
+    apStarted = WiFi.softAP(apSsid(), AP_PASSWORD, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
   } else {
     // Open network (no password)
-    apStarted = WiFi.softAP(AP_SSID, nullptr, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
+    apStarted = WiFi.softAP(apSsid(), nullptr, AP_CHANNEL, false, AP_MAX_CONNECTIONS);
   }
 
   if (!apStarted) {
@@ -273,10 +275,10 @@ void CrossPointWebServerActivity::startAccessPoint() {
   char ipStr[16];
   snprintf(ipStr, sizeof(ipStr), "%d.%d.%d.%d", apIP[0], apIP[1], apIP[2], apIP[3]);
   connectedIP = ipStr;
-  connectedSSID = AP_SSID;
+  connectedSSID = apSsid();
 
   LOG_DBG("WEBACT", "Access Point started!");
-  LOG_DBG("WEBACT", "SSID: %s", AP_SSID);
+  LOG_DBG("WEBACT", "SSID: %s", apSsid());
   LOG_DBG("WEBACT", "IP: %s", connectedIP.c_str());
 
   // Start mDNS for hostname resolution

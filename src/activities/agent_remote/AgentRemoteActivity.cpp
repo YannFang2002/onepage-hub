@@ -492,6 +492,11 @@ void AgentRemoteActivity::startVoice() {
     return;
   }
 
+#if ONEPAGE_KEEP_WIFI_WHILE_RECORDING
+  // Experiment: with 8 MB PSRAM enabled the I2S DMA descriptors may fit next to
+  // WiFi, so the radio can stay up for the whole capture.
+  LOG_INF("VOICE", "keeping WiFi up while recording (experiment)");
+#else
   // PDM/I2S needs internal DMA memory that WiFi occupies on this board. Drop the
   // radio for the capture, then reconnect before the upload.
   if (WiFi.getMode() != WIFI_OFF) {
@@ -499,6 +504,7 @@ void AgentRemoteActivity::startVoice() {
     WiFi.mode(WIFI_OFF);
     delay(200);
   }
+#endif
   wifiConnecting_ = false;
 
   LOG_INF("VOICE", "mic ensure: internal=%u psram=%u", static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
