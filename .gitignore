@@ -41,3 +41,5 @@ lib/EpdFont/scripts/output/
 build.log
 flash*.log
 serial.log
+# local release staging
+dist/
