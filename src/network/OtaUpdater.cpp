@@ -11,6 +11,7 @@
 #include <esp_crt_bundle.h>
 #include <esp_http_client.h>
 #include <esp_https_ota.h>
+#include <esp_heap_caps.h>
 #include <esp_wifi.h>
 // clang-format on
 
@@ -59,7 +60,11 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   });
   if (!ok) {
     LOG_ERR("OTA", "Release check fetch failed");
-    lastError = "HTTPS 请求失败：网络、证书或内存不足";
+    char detail[128];
+    snprintf(detail, sizeof(detail), "HTTPS 请求失败（内部内存 %u KB / PSRAM %u KB）",
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
+    lastError = detail;
     return HTTP_ERROR;
   }
 
