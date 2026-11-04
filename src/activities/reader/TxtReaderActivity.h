@@ -21,6 +21,17 @@ class TxtReaderActivity final : public Activity {
   int viewportWidth = 0;
   bool initialized = false;
 
+  // Incremental page index. A new book shows page 0 immediately; the remaining
+  // offsets are built in small time slices from loop().
+  bool indexComplete = false;
+  size_t nextIndexOffset = 0;
+  bool indexDirty = false;
+  uint32_t lastPartialSaveMs = 0;
+  int pagesSinceSave = 0;
+
+  void indexSomePages(uint32_t budgetMs);
+  bool ensurePageIndexed(int page);
+
   // Cached settings for cache validation (different fonts/margins require re-indexing)
   int cachedFontId = 0;
   uint8_t cachedScreenMargin = 0;
@@ -35,9 +46,11 @@ class TxtReaderActivity final : public Activity {
 
   void initializeReader();
   bool loadPageAtOffset(size_t offset, std::vector<std::string>& outLines, size_t& nextOffset);
-  void buildPageIndex();
   bool loadPageIndexCache();
-  void savePageIndexCache() const;
+  bool loadPartialIndexCache();
+  void savePageIndexCache();
+  void savePartialIndexCache();
+  void discardPartialIndexCache();
   void saveProgress() const;
   void loadProgress();
 
