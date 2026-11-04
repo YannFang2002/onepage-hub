@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <esp_sleep.h>
 
+#include <algorithm>
 #include <cassert>
 
 #include "HalGPIO.h"
@@ -11,6 +12,47 @@
 HalPowerManager powerManager;  // Singleton instance
 
 volatile bool HalPowerManager::bleActive_ = false;
+
+namespace {
+
+// ADC sampling of the pack divider (OnePage / X4).
+//
+// The divider node is high impedance and starts far above the battery voltage
+// after power-on: a probe on the real board read 3005 mV decaying to 1848 mV
+// with a ~0.35 s time constant. Feeding that transient into the percentage curve
+// pegged the status bar at 100% on a half-flat pack, and because the value was
+// only recomputed when the status bar was redrawn it then stepped down as the
+// user operated the device.
+//
+// A settled node is quiet, so a burst whose spread is too wide means the node is
+// still moving and the whole burst is dropped.
+constexpr uint8_t kBatterySamples = 5;
+constexpr uint16_t kBatterySampleGapMs = 12;  // the burst spans ~60 ms
+constexpr uint16_t kBatteryMaxSpreadMv = 40;  // wider than this: still settling
+constexpr uint16_t kBatteryMinPackMv = 2900;  // ~2.9 V: pack deeply discharged
+constexpr uint16_t kBatteryMaxPackMv = 4350;  // ~4.35 V: impossible for one cell
+
+// Median of a stable burst, or 0 when the node is still settling / the value is
+// not a plausible single-cell voltage.
+uint16_t samplePackMillivolts(const BatteryMonitor& battery) {
+  uint16_t samples[kBatterySamples];
+  uint16_t lo = 0xFFFF;
+  uint16_t hi = 0;
+  for (uint8_t i = 0; i < kBatterySamples; i++) {
+    const uint16_t mv = battery.readMillivolts();
+    samples[i] = mv;
+    if (mv < lo) lo = mv;
+    if (mv > hi) hi = mv;
+    delay(kBatterySampleGapMs);
+  }
+  if (hi - lo > kBatteryMaxSpreadMv) return 0;
+  std::sort(samples, samples + kBatterySamples);
+  const uint16_t median = samples[kBatterySamples / 2];
+  if (median < kBatteryMinPackMv || median > kBatteryMaxPackMv) return 0;
+  return median;
+}
+
+}  // namespace
 
 void HalPowerManager::begin() {
   if (gpio.deviceIsX3()) {
@@ -21,6 +63,13 @@ void HalPowerManager::begin() {
     _batteryUseI2C = true;
   } else {
     pinMode(BAT_GPIO0, INPUT);
+#ifdef ONEPAGE_C61
+    // Keep the charger enabled. The sampler no longer toggles BAT_CHG_EN: pausing
+    // the charger moved the divider node by only ~30 mV, which does not justify
+    // churning the charge path on every poll.
+    pinMode(BAT_CHG_EN, OUTPUT);
+    digitalWrite(BAT_CHG_EN, HIGH);
+#endif
   }
   normalFreq = getCpuFrequencyMhz();
   currentSetFreq = normalFreq;
@@ -120,54 +169,52 @@ void HalPowerManager::startDeepSleep(HalGPIO& gpio) const {
 }
 
 uint16_t HalPowerManager::getBatteryPercentage() const {
-  if (_batteryUseI2C) {
-    const unsigned long now = millis();
-    if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) {
-      return _batteryCachedPercent;
-    }
+  const unsigned long now = millis();
+  // A redraw asks for the percentage twice (once for the layout, once for the
+  // icon); the short window makes both calls share one sample without ever
+  // showing a stale value on a later redraw.
+  if (_batteryLastPollMs != 0 && (now - _batteryLastPollMs) < BATTERY_POLL_MS) {
+    return _batteryReturnedPercent;
+  }
+  _batteryLastPollMs = now;
 
+  if (_batteryUseI2C) {
     // Read SOC directly from I2C fuel gauge (16-bit LE register).
     // On I2C error, keep last known value to avoid UI jitter/slowdowns.
     Wire.beginTransmission(I2C_ADDR_BQ27220);
     Wire.write(BQ27220_SOC_REG);
     if (Wire.endTransmission(false) != 0) {
-      _batteryLastPollMs = now;
-      return _batteryCachedPercent;
+      return _batteryReturnedPercent;
     }
     Wire.requestFrom(I2C_ADDR_BQ27220, (uint8_t)2);
     if (Wire.available() < 2) {
-      _batteryLastPollMs = now;
-      return _batteryCachedPercent;
+      return _batteryReturnedPercent;
     }
     const uint8_t lo = Wire.read();
     const uint8_t hi = Wire.read();
     const uint16_t soc = (hi << 8) | lo;
     _batteryCachedPercent = soc > 100 ? 100 : soc;
-    _batteryLastPollMs = now;
-    return _batteryCachedPercent;
+    _batteryReturnedPercent = _batteryCachedPercent;
+    return _batteryReturnedPercent;
   }
+
+  // OnePage / X4: voltage divider on an ADC pin, converted with the original
+  // voltage -> percentage curve.
   static const BatteryMonitor battery = BatteryMonitor(BAT_GPIO0);
-
-#ifdef ONEPAGE_C61
-  // Pause charging while sampling so the charger's terminal voltage doesn't
-  // inflate the reading (hardware_io.md §10: BAT_CHG_EN=GPIO10, low=paused).
-  pinMode(BAT_CHG_EN, OUTPUT);
-  digitalWrite(BAT_CHG_EN, LOW);
-  delay(5);  // let the battery terminal voltage settle
-  const uint16_t mv = battery.readMillivolts();
-  digitalWrite(BAT_CHG_EN, HIGH);  // resume charging
-  const uint16_t pct = BatteryMonitor::percentageFromMillivolts(mv);
-#else
-  const uint16_t pct = battery.readPercentage();
-#endif
-
-  // smooth the battery %.
-  if (_batteryCachedPercent == 0) {
-    _batteryCachedPercent = 10 * pct;
-  } else {
-    _batteryCachedPercent = (_batteryCachedPercent * 9 + pct * 10) / 10;
+  const uint16_t mv = samplePackMillivolts(battery);
+  if (mv == 0) {
+    // Node still settling or a bad sample: keep the last value and let the next
+    // call sample again straight away.
+    _batteryLastPollMs = now - BATTERY_POLL_MS;
+    return _batteryReturnedPercent;
   }
-  return _batteryCachedPercent / 10;
+
+  // Report the pack as it is right now. A redraw is rare (it costs a full e-ink
+  // refresh), so there is nothing to smooth: smoothing only made the number
+  // crawl towards the truth one redraw at a time.
+  _batteryReturnedPercent = BatteryMonitor::percentageFromMillivolts(mv);
+  LOG_DBG("PWR", "Battery %umV -> %u%%", mv, _batteryReturnedPercent);
+  return _batteryReturnedPercent;
 }
 
 HalPowerManager::Lock::Lock() {
