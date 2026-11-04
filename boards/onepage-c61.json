@@ -21,7 +21,7 @@
     "arduino",
     "espidf"
   ],
-  "name": "OnePage Hub (ESP32-C61HR2, 16 MB Flash, 2 MB PSRAM @40MHz)",
+  "name": "OnePage Hub (ESP32-C61HR2, 16 MB Flash, 8 MB PSRAM @80MHz)",
   "upload": {
     "flash_size": "16MB",
     "maximum_ram_size": 327680,

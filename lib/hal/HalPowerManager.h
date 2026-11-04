@@ -18,9 +18,10 @@ class HalPowerManager {
   int normalFreq = 0;      // MHz
   int currentSetFreq = 0;  // last frequency we set (MHz); 0 = unknown/uninitialized
 
-  // I2C fuel gauge configuration for X3 battery monitoring
+  // Battery monitoring: I2C fuel gauge on X3, ADC divider on OnePage / X4
   bool _batteryUseI2C = false;                   // True if using I2C fuel gauge (X3), false for ADC (X4)
-  mutable int _batteryCachedPercent = 0;         // Last read battery percentage (0-100)
+  mutable int _batteryCachedPercent = 0;         // Last SOC read from the fuel gauge (X3 only)
+  mutable uint16_t _batteryReturnedPercent = 0;  // Last percentage handed to the UI
   mutable unsigned long _batteryLastPollMs = 0;  // Timestamp of last battery read in milliseconds
 
   enum LockMode { None, NormalSpeed };
@@ -33,7 +34,7 @@ class HalPowerManager {
   static constexpr int LOW_POWER_FREQ = 10;                    // MHz
   static constexpr int BLE_ACTIVE_FREQ = 80;                   // MHz (see setBleActive)
   static constexpr unsigned long IDLE_POWER_SAVING_MS = 2000;  // ms
-  static constexpr unsigned long BATTERY_POLL_MS = 1500;       // ms
+  static constexpr unsigned long BATTERY_POLL_MS = 250;  // ms; both status-bar calls in one draw share a sample
 
   void begin();
 

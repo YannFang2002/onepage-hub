@@ -828,11 +828,17 @@ void BaseTheme::drawStatusBar(GfxRenderer& renderer, const float bookProgress, c
     char progressStr[32];
 
     if (SETTINGS.statusBarBookProgressPercentage && SETTINGS.statusBarChapterPageCount) {
-      snprintf(progressStr, sizeof(progressStr), "%d/%d  %.0f%%", currentPage, pageCount, bookProgress);
+      if (pageCount > 0) {
+        snprintf(progressStr, sizeof(progressStr), "%d/%d  %.0f%%", currentPage, pageCount, bookProgress);
+      } else {
+        snprintf(progressStr, sizeof(progressStr), "%d/?  %.0f%%", currentPage, bookProgress);
+      }
     } else if (SETTINGS.statusBarBookProgressPercentage) {
       snprintf(progressStr, sizeof(progressStr), "%.0f%%", bookProgress);
-    } else {
+    } else if (pageCount > 0) {
       snprintf(progressStr, sizeof(progressStr), "%d/%d", currentPage, pageCount);
+    } else {
+      snprintf(progressStr, sizeof(progressStr), "%d/?", currentPage);
     }
 
     int progressTextWidth = renderer.getTextWidth(SMALL_FONT_ID, progressStr);
