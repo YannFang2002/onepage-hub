@@ -39,5 +39,6 @@ lib/EpdFont/scripts/output/
 
 # local build/flash logs
 build.log
+build-*.log
 flash*.log
 serial.log
