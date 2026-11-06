@@ -7,7 +7,7 @@
 
 CrossPoint is open-source e-reader firmware — community-built, fully hackable, free forever. This port keeps that engine and adapts it to the OnePage device.
 
-**Runs on:** the self-designed **OnePage** reader (ESP32-C61). Part of the OnePage open-hardware project — firmware · board (PCB) · 3D case · web. See the [OnePage main repo](https://github.com/MoveCall/onepage-reader) *(link TBD)* for hardware and 3D files.
+**Runs on:** the self-designed **OnePage** reader (ESP32-C61). Part of the OnePage open-hardware project — firmware · board (PCB) · 3D case · web. See the [OnePage main repo](https://github.com/MoveCall/onepage-reader) for hardware and 3D files.
 
 ## What this port adds / changes (vs upstream CrossPoint)
 
