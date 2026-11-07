@@ -44,7 +44,17 @@ bool isRedirect(int status) {
 // that ends early as ESP_ERR_HTTP_INCOMPLETE_DATA, whereas the read loop streams
 // large/slow files and surfaces a short read directly.
 HttpDownloader::DownloadError runGet(const std::string& url, const std::string& username, const std::string& password,
-                                     Sink& sink) {
+                                     Sink& sink, std::string* errOut = nullptr) {
+  // A short ASCII reason for the failure, surfaced by callers that show errors
+  // on the display (the serial log always carries the full detail).
+  auto setErr = [errOut](const char* fmt, auto... args) {
+    if (errOut) {
+      char buf[96];
+      snprintf(buf, sizeof(buf), fmt, args...);
+      *errOut = buf;
+    }
+  };
+
   esp_http_client_config_t config = {};
   config.url = url.c_str();
   config.buffer_size = HTTP_RX_BUF;
@@ -62,6 +72,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (!client) {
     LOG_ERR("HTTP", "client init failed");
+    setErr("client init");
     return HttpDownloader::HTTP_ERROR;
   }
 
@@ -79,6 +90,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   esp_err_t err = esp_http_client_open(client, 0);
   if (err != ESP_OK) {
     LOG_ERR("HTTP", "open failed: %s", esp_err_to_name(err));
+    setErr("connect %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
     return HttpDownloader::HTTP_ERROR;
   }
@@ -89,6 +101,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
     err = esp_http_client_open(client, 0);
     if (err != ESP_OK) {
       LOG_ERR("HTTP", "redirect open failed: %s", esp_err_to_name(err));
+      setErr("redirect %s", esp_err_to_name(err));
       esp_http_client_cleanup(client);
       return HttpDownloader::HTTP_ERROR;
     }
@@ -98,6 +111,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
 
   if (status != 200) {
     LOG_ERR("HTTP", "unexpected status: %d", status);
+    setErr("HTTP %d", status);
     esp_http_client_cleanup(client);
     return HttpDownloader::HTTP_ERROR;
   }
@@ -109,6 +123,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   auto buf = makeUniqueNoThrow<char[]>(READ_CHUNK);
   if (!buf) {
     LOG_ERR("HTTP", "OOM: %u byte read buffer", (unsigned)READ_CHUNK);
+    setErr("alloc %uB", (unsigned)READ_CHUNK);
     esp_http_client_cleanup(client);
     return HttpDownloader::HTTP_ERROR;
   }
@@ -121,6 +136,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
     const int read = esp_http_client_read(client, buf.get(), READ_CHUNK);
     if (read < 0) {
       LOG_ERR("HTTP", "read error after %zu bytes", sink.downloaded);
+      setErr("read@%zu", sink.downloaded);
       esp_http_client_cleanup(client);
       return HttpDownloader::HTTP_ERROR;
     }
@@ -137,6 +153,7 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
   esp_http_client_cleanup(client);
   if (!complete) {
     LOG_ERR("HTTP", "incomplete: got %zu of %zu bytes", sink.downloaded, sink.total);
+    setErr("short %zu/%zu", sink.downloaded, sink.total);
     return HttpDownloader::HTTP_ERROR;
   }
   return HttpDownloader::OK;
@@ -144,15 +161,15 @@ HttpDownloader::DownloadError runGet(const std::string& url, const std::string& 
 }  // namespace
 
 bool HttpDownloader::fetchUrl(const std::string& url, Stream& outContent, const std::string& username,
-                              const std::string& password) {
+                              const std::string& password, std::string* errOut) {
   LOG_DBG("HTTP", "Fetching: %s", url.c_str());
   Sink sink;
   sink.write = [&outContent](const uint8_t* data, size_t len) { return outContent.write(data, len) == len; };
-  return runGet(url, username, password, sink) == OK;
+  return runGet(url, username, password, sink, errOut) == OK;
 }
 
 bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, const std::string& username,
-                              const std::string& password) {
+                              const std::string& password, std::string* errOut) {
   LOG_DBG("HTTP", "Fetching: %s", url.c_str());
   outContent.clear();  // start clean; the sink appends, so don't carry prior content
   Sink sink;
@@ -160,15 +177,15 @@ bool HttpDownloader::fetchUrl(const std::string& url, std::string& outContent, c
     outContent.append(reinterpret_cast<const char*>(data), len);
     return true;
   };
-  return runGet(url, username, password, sink) == OK;
+  return runGet(url, username, password, sink, errOut) == OK;
 }
 
 bool HttpDownloader::fetchUrl(const std::string& url, const DataCallback& onData, const std::string& username,
-                              const std::string& password) {
+                              const std::string& password, std::string* errOut) {
   LOG_DBG("HTTP", "Fetching: %s", url.c_str());
   Sink sink;
   sink.write = onData;
-  return runGet(url, username, password, sink) == OK;
+  return runGet(url, username, password, sink, errOut) == OK;
 }
 
 HttpDownloader::DownloadError HttpDownloader::downloadToFile(const std::string& url, const std::string& destPath,

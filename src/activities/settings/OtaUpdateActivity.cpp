@@ -5,7 +5,6 @@
 #include <WiFi.h>
 
 #include "MappedInputManager.h"
-#include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
@@ -69,12 +68,13 @@ void OtaUpdateActivity::onExit() {
 
   // Success path reboots via the SHUTTING_DOWN state's plain ESP.restart()
   // (loop() above) so the new firmware boots normally. Back-out paths land
-  // here with wifi still active; silent-restart to free the LWIP/mbedTLS
-  // fragmentation, same as the other wifi activities.
+  // here with wifi still active: tear the network stack down cleanly and
+  // return to Settings, like CrossPointWebServerActivity::onExit does — the
+  // old silentRestart() heap-defrag workaround made every normal exit reboot.
   if (WiFi.getMode() != WIFI_MODE_NULL) {
     WiFi.disconnect(false);
     delay(30);
-    silentRestart();
+    WiFi.mode(WIFI_OFF);
   }
 }
 
@@ -136,6 +136,12 @@ void OtaUpdateActivity::render(RenderLock&&) {
     const std::string& why = updater.getLastError();
     if (!why.empty()) {
       renderer.drawCenteredText(SMALL_FONT_ID, top + height + metrics.verticalSpacing, why.c_str());
+    }
+    // Heap readout on its own line — keeping the memory numbers out of line 1
+    // is what makes the error reason fit the 320 px display.
+    const std::string& mem = updater.getLastMemoryInfo();
+    if (!mem.empty()) {
+      renderer.drawCenteredText(SMALL_FONT_ID, top + height * 2 + metrics.verticalSpacing * 2, mem.c_str());
     }
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
     GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);

@@ -54,17 +54,25 @@ OtaUpdater::OtaUpdaterError OtaUpdater::checkForUpdate() {
   // OOM there aborts. fetchUrl handles the verified-https GET, redirects, and
   // User-Agent (see HttpDownloader).
   ReleaseJsonParser releaseParser;
-  const bool ok = HttpDownloader::fetchUrl(latestReleaseUrl, [&releaseParser](const uint8_t* data, size_t len) {
-    releaseParser.feed(reinterpret_cast<const char*>(data), len);
-    return true;
-  });
+  std::string fetchErr;
+  const bool ok = HttpDownloader::fetchUrl(latestReleaseUrl,
+                                           [&releaseParser](const uint8_t* data, size_t len) {
+                                             releaseParser.feed(reinterpret_cast<const char*>(data), len);
+                                             return true;
+                                           },
+                                           "", "", &fetchErr);
   if (!ok) {
-    LOG_ERR("OTA", "Release check fetch failed");
-    char detail[128];
-    snprintf(detail, sizeof(detail), "HTTPS 请求失败（内部内存 %u KB / PSRAM %u KB）",
+    LOG_ERR("OTA", "Release check fetch failed: %s", fetchErr.c_str());
+    // Line 1 is the failing step only ("connect ESP_ERR_NO_MEM", "HTTP 403",
+    // ...): ASCII, short enough for the narrow display. The heap readout goes on
+    // its own line — it separates "ran out of internal SRAM mid-TLS" from a
+    // healthy-heap network failure.
+    lastError = fetchErr;
+    char detail[96];
+    snprintf(detail, sizeof(detail), "内部内存 %u KB / PSRAM %u KB",
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM) / 1024));
-    lastError = detail;
+    lastMemoryInfo = detail;
     return HTTP_ERROR;
   }
 
