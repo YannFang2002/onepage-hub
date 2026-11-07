@@ -23,7 +23,6 @@ enum class SettingAction {
   SdFirmwareUpdate,
   Language,
   DownloadFonts,
-  BlePageTurner,
   SleepImage,
   DeviceName,
 };

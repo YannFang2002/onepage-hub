@@ -280,28 +280,7 @@ class CrossPointSettings {
   uint8_t quickResumeSleepScreen = QUICK_RESUME_NEVER;
 
 #ifdef ONEPAGE_C61
-  // BLE page-turner remote. Enabled flag + the two learned HID report patterns
-  // (page-forward / page-back). A pattern is: which characteristic handle the
-  // report arrives on + the exact payload bytes, matched byte-for-byte. Learned
-  // via the pairing UI; persisted so pairing survives reboots.
-  uint8_t blePageTurnerEnabled = 0;
-  // Runtime on/off switch shown in the settings list (default off). Independent
-  // of the pairing data below: turning off stops BLE but keeps the bound device
-  // + learned keys, so re-enabling reconnects without re-pairing. Boot only
-  // starts BLE when this is on.
-  uint8_t blePageTurnerOn = 0;
-  uint16_t bleFwdAttrHandle = 0;
-  uint8_t bleFwdLen = 0;
-  uint8_t bleFwdBytes[8] = {0};
-  uint16_t bleBackAttrHandle = 0;
-  uint8_t bleBackLen = 0;
-  uint8_t bleBackBytes[8] = {0};
-  // Bound (paired) remote: only this device is auto-reconnected at boot.
-  uint8_t bleDeviceAddr[6] = {0};
-  uint8_t bleDeviceAddrType = 0;
-  uint8_t bleDeviceValid = 0;
-  char bleDeviceName[24] = "";
-  // Name advertised over WiFi/BLE; also shown by the companion app.
+  // Name advertised by the web UI and shown to other devices on the network.
   char deviceName[32] = "OnePage Hub H1";
 #endif
 

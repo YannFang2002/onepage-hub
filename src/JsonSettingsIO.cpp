@@ -161,31 +161,7 @@ bool JsonSettingsIO::saveSettings(const CrossPointSettings& s, const char* path)
   doc["language"] = (s.language < getLanguageCount()) ? LANGUAGE_CODES[s.language] : "EN";
 
 #ifdef ONEPAGE_C61
-  // BLE page-turner — managed by BlePageTurnerActivity, not in SettingsList.
-  // Report patterns stored as hex strings (attr:byte-hex) for compactness.
-  doc["blePageTurnerEnabled"] = s.blePageTurnerEnabled;
-  doc["blePageTurnerOn"] = s.blePageTurnerOn;
-  {
-    auto patToHex = [](uint16_t attr, uint8_t len, const uint8_t* bytes) {
-      char buf[8 + 2 * 8 + 1];
-      int p = snprintf(buf, sizeof(buf), "%04X:", attr);
-      for (uint8_t i = 0; i < len && p < (int)sizeof(buf) - 2; i++) {
-        p += snprintf(buf + p, sizeof(buf) - p, "%02X", bytes[i]);
-      }
-      return std::string(buf);
-    };
-    if (s.bleFwdLen > 0) doc["bleFwd"] = patToHex(s.bleFwdAttrHandle, s.bleFwdLen, s.bleFwdBytes);
-    if (s.bleBackLen > 0) doc["bleBack"] = patToHex(s.bleBackAttrHandle, s.bleBackLen, s.bleBackBytes);
-  }
-  if (s.bleDeviceValid) {
-    char addrHex[13];
-    snprintf(addrHex, sizeof(addrHex), "%02X%02X%02X%02X%02X%02X", s.bleDeviceAddr[0], s.bleDeviceAddr[1],
-             s.bleDeviceAddr[2], s.bleDeviceAddr[3], s.bleDeviceAddr[4], s.bleDeviceAddr[5]);
-    doc["bleAddr"] = addrHex;
-    doc["bleAddrType"] = s.bleDeviceAddrType;
-    if (s.bleDeviceName[0]) doc["bleName"] = s.bleDeviceName;
   if (s.deviceName[0]) doc["deviceName"] = s.deviceName;
-  }
 #endif
 
   String json;
@@ -299,44 +275,6 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   }
 
 #ifdef ONEPAGE_C61
-  // BLE page-turner enable flag + learned report patterns (hex "ATTR:BYTES").
-  s.blePageTurnerEnabled = clamp(doc["blePageTurnerEnabled"] | (uint8_t)0, (uint8_t)2, (uint8_t)0);
-  s.blePageTurnerOn = clamp(doc["blePageTurnerOn"] | (uint8_t)0, (uint8_t)2, (uint8_t)0);
-  auto parsePat = [](const char* hex, uint16_t& attr, uint8_t& len, uint8_t* bytes) {
-    attr = 0;
-    len = 0;
-    if (!hex) return;
-    unsigned a = 0;
-    int consumed = 0;
-    if (sscanf(hex, "%4x:%n", &a, &consumed) < 1) return;
-    attr = static_cast<uint16_t>(a);
-    const char* p = hex + consumed;
-    while (p[0] && p[1] && len < 8) {
-      unsigned b = 0;
-      if (sscanf(p, "%2x", &b) != 1) break;
-      bytes[len++] = static_cast<uint8_t>(b);
-      p += 2;
-    }
-  };
-  parsePat(doc["bleFwd"] | (const char*)nullptr, s.bleFwdAttrHandle, s.bleFwdLen, s.bleFwdBytes);
-  parsePat(doc["bleBack"] | (const char*)nullptr, s.bleBackAttrHandle, s.bleBackLen, s.bleBackBytes);
-  {
-    const char* addrHex = doc["bleAddr"] | (const char*)nullptr;
-    s.bleDeviceValid = 0;
-    if (addrHex && strlen(addrHex) == 12) {
-      bool ok = true;
-      for (int i = 0; i < 6; i++) {
-        unsigned b = 0;
-        if (sscanf(addrHex + i * 2, "%2x", &b) != 1) { ok = false; break; }
-        s.bleDeviceAddr[i] = static_cast<uint8_t>(b);
-      }
-      if (ok) {
-        s.bleDeviceValid = 1;
-        s.bleDeviceAddrType = doc["bleAddrType"] | (uint8_t)0;
-        const char* nm = doc["bleName"] | "";
-        strncpy(s.bleDeviceName, nm, sizeof(s.bleDeviceName) - 1);
-        s.bleDeviceName[sizeof(s.bleDeviceName) - 1] = '\0';
-
   const char* devName = doc["deviceName"] | "";
   // Migrate the short-lived "H1" default to the full product name.
   if (strcmp(devName, "H1") == 0) {
@@ -345,9 +283,6 @@ bool JsonSettingsIO::loadSettings(CrossPointSettings& s, const char* json, bool*
   } else if (devName[0] != '\0') {
     strncpy(s.deviceName, devName, sizeof(s.deviceName) - 1);
     s.deviceName[sizeof(s.deviceName) - 1] = '\0';
-  }
-      }
-    }
   }
 #endif
 

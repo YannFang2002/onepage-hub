@@ -23,9 +23,6 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "CjkUiFontSystem.h"
-#ifdef ONEPAGE_C61
-#include "bluetooth/BleHidHost.h"
-#endif
 #include "KOReaderCredentialStore.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
@@ -278,14 +275,6 @@ void enterDeepSleep(bool fromTimeout = false) {
     WiFi.mode(WIFI_OFF);
   }
 
-#ifdef ONEPAGE_C61
-  // Tear down BLE before sleep so the BT power domain is released (and the
-  // controller isn't left running against a cut power rail on wake).
-  if (BLE_HID_HOST.isStarted()) {
-    BLE_HID_HOST.stop();
-  }
-#endif
-
   halTiltSensor.deepSleep();
   display.deepSleep();
   LOG_DBG("MAIN", "Entering deep sleep");
@@ -452,29 +441,6 @@ void setup() {
   APP_STATE.loadFromFile();
   RECENT_BOOKS.loadFromFile();
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
-#ifdef ONEPAGE_C61
-  // BLE page-turner: only start at boot if the user's on/off switch is ON. Load
-  // the bound device + learned patterns so it reconnects to the paired remote.
-  if (SETTINGS.blePageTurnerOn) {
-    BleReportPattern fwd;
-    fwd.attrHandle = SETTINGS.bleFwdAttrHandle;
-    fwd.len = SETTINGS.bleFwdLen;
-    memcpy(fwd.bytes, SETTINGS.bleFwdBytes, sizeof(fwd.bytes));
-    fwd.valid = SETTINGS.bleFwdLen > 0;
-    BleReportPattern back;
-    back.attrHandle = SETTINGS.bleBackAttrHandle;
-    back.len = SETTINGS.bleBackLen;
-    memcpy(back.bytes, SETTINGS.bleBackBytes, sizeof(back.bytes));
-    back.valid = SETTINGS.bleBackLen > 0;
-    BLE_HID_HOST.setPattern(BleHidAction::PageForward, fwd);
-    BLE_HID_HOST.setPattern(BleHidAction::PageBack, back);
-    // Only auto-reconnect the specific bound remote (not any nearby HID device).
-    if (SETTINGS.bleDeviceValid) {
-      BLE_HID_HOST.setBoundDevice(SETTINGS.bleDeviceAddr, SETTINGS.bleDeviceAddrType);
-    }
-    BLE_HID_HOST.start();
-  }
-#endif
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();
   UITheme::getInstance().reload();
@@ -624,23 +590,6 @@ void loop() {
   static unsigned long lastMemPrint = 0;
 
   gpio.update();
-#ifdef ONEPAGE_C61
-  // Feed BLE page-turner key events into the input pipeline as synthetic side-
-  // button presses, right after the per-frame gpio.update() and before any
-  // activity->loop() reads wasPressed(). Forward -> BTN_DOWN, back -> BTN_UP:
-  // the BLE keys behave like the physical side buttons, so the reader's
-  // PageForward/PageBack mapping (incl. sideButtonLayout swap) applies. No-op
-  // when the BLE host isn't running (drainPendingActions returns 0).
-  {
-    const uint8_t bleActions = BLE_HID_HOST.drainPendingActions();
-    if (bleActions & (1u << static_cast<uint8_t>(BleHidAction::PageForward))) {
-      gpio.injectPress(HalGPIO::BTN_DOWN);
-    }
-    if (bleActions & (1u << static_cast<uint8_t>(BleHidAction::PageBack))) {
-      gpio.injectPress(HalGPIO::BTN_UP);
-    }
-  }
-#endif
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
 
   renderer.setFadingFix(SETTINGS.fadingFix);

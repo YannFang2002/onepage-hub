@@ -8,10 +8,6 @@
 #include <cstring>
 
 #include "ButtonRemapActivity.h"
-#ifdef ONEPAGE_C61
-#include "BlePageTurnerActivity.h"
-#include "bluetooth/BleHidHost.h"
-#endif
 #include "ClearCacheActivity.h"
 #include "CrossPointSettings.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -76,9 +72,6 @@ void SettingsActivity::rebuildSettingsLists() {
   // Append device-only ACTION items
   controlsSettings.insert(controlsSettings.begin(),
                           SettingInfo::Action(StrId::STR_REMAP_FRONT_BUTTONS, SettingAction::RemapFrontButtons));
-#ifdef ONEPAGE_C61
-  controlsSettings.push_back(SettingInfo::Toggle(StrId::STR_BLE_PAGE_TURNER, &CrossPointSettings::blePageTurnerOn));
-#endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_WIFI_NETWORKS, SettingAction::Network));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_KOREADER_SYNC, SettingAction::KOReaderSync));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_OPDS_SERVERS, SettingAction::OPDSBrowser));
@@ -236,29 +229,6 @@ void SettingsActivity::toggleCurrentSetting() {
     openSleepTimeoutPicker();
     return;
   }
-
-#ifdef ONEPAGE_C61
-  // BLE page-turner switch: flip on/off, then start/stop BLE. Turning on with no
-  // pairing yet opens the pairing page; turning on when already paired just
-  // reconnects. Turning off stops BLE but keeps the bound device + learned keys.
-  if (setting.valuePtr == &CrossPointSettings::blePageTurnerOn) {
-    const bool turningOn = !SETTINGS.blePageTurnerOn;
-    SETTINGS.blePageTurnerOn = turningOn;
-    SETTINGS.saveToFile();
-    if (turningOn) {
-      const bool paired = SETTINGS.bleDeviceValid && SETTINGS.bleFwdLen > 0 && SETTINGS.bleBackLen > 0;
-      startActivityForResult(std::make_unique<BlePageTurnerActivity>(renderer, mappedInput),
-                             [this](const ActivityResult&) {
-                               SETTINGS.saveToFile();
-                               rebuildSettingsLists();
-                             });
-      (void)paired;  // BlePageTurnerActivity::onEnter decides discover vs reconnect
-    } else {
-      BLE_HID_HOST.stop();
-    }
-    return;
-  }
-#endif
 
   if (setting.type == SettingType::TOGGLE && setting.valuePtr != nullptr) {
     // Toggle the boolean value using the member pointer

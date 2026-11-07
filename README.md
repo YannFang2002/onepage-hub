@@ -13,8 +13,6 @@ CrossPoint is open-source e-reader firmware — community-built, fully hackable,
 
 - **ESP32-C61 support** — new `onepage` PlatformIO env + board def, board-support SDK (`open-onepage-sdk`), `#ifdef ONEPAGE_C61` guards (~19 core files).
 - **Simplified & Traditional Chinese UI** — added i18n translations + CJK SD-card font fallback.
-- **Bluetooth page-turner** — BLE HID host that learns any remote's buttons.
-- **Power optimization** — BLE-active idle current 42 → 23 mA (controller modem-sleep + 32.768 kHz sleep clock + CPU DFS). See [docs/bluetooth-power-optimization.md](./docs/bluetooth-power-optimization.md).
 - **80 MHz flash clock**, OnePage boot logo, in-reader ruled-lines option.
 - **Desktop launcher** — a three-column app grid on boot (Reader · Settings · File Transfer); waking from sleep resumes the app you were in. Apps are registered in [`src/apps/AppRegistry.cpp`](./src/apps/AppRegistry.cpp), so adding one is a single table entry.
 
