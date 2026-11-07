@@ -183,17 +183,37 @@ OtaUpdater::OtaUpdaterError OtaUpdater::installUpdate(ProgressCallback onProgres
   }
 
   int lastReportedPct = -1;
+  size_t lastReportedBytes = 0;
   do {
     esp_err = esp_https_ota_perform(ota_handle);
     processedSize = esp_https_ota_get_image_len_read(ota_handle);
-    // Fire the callback only on whole-percent change. Without this it fired
-    // every ~100ms perform iteration, waking the render task whose framebuffer
-    // work contends with TLS on the same internal arena. E-ink can't repaint
-    // faster than a percent tick anyway.
-    if (onProgress && totalSize > 0) {
-      const int pct = static_cast<int>(static_cast<uint64_t>(processedSize) * 100 / totalSize);
-      if (pct != lastReportedPct) {
-        lastReportedPct = pct;
+    // Gitee's release API carries no size field for assets (GitHub's does), so
+    // checkForUpdate() leaves totalSize at 0. esp_https_ota reads the real
+    // Content-Length from the response headers — adopt it as soon as it lands.
+    if (totalSize == 0) {
+      const int imageSize = esp_https_ota_get_image_size(ota_handle);
+      if (imageSize > 0) {
+        totalSize = static_cast<size_t>(imageSize);
+      }
+    }
+    // Fire the callback on whole-percent change once the total is known; until
+    // then every 32 KB, so the screen keeps moving instead of freezing at the
+    // initial frame. Without the throttle this fired every ~100ms perform
+    // iteration, waking the render task whose framebuffer work contends with
+    // TLS on the same internal arena. E-ink can't repaint faster anyway.
+    if (onProgress) {
+      bool fire = false;
+      if (totalSize > 0) {
+        const int pct = static_cast<int>(static_cast<uint64_t>(processedSize) * 100 / totalSize);
+        if (pct != lastReportedPct) {
+          lastReportedPct = pct;
+          fire = true;
+        }
+      } else if (processedSize - lastReportedBytes >= 32768) {
+        lastReportedBytes = processedSize;
+        fire = true;
+      }
+      if (fire) {
         onProgress(ctx);
       }
     }

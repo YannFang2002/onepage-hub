@@ -92,7 +92,11 @@ void OtaUpdateActivity::render(RenderLock&&) {
   float updaterProgress = 0;
   if (state == UPDATE_IN_PROGRESS) {
     LOG_DBG("OTA", "Update progress: %d / %d", updater.getProcessedSize(), updater.getTotalSize());
-    updaterProgress = static_cast<float>(updater.getProcessedSize()) / static_cast<float>(updater.getTotalSize());
+    // totalSize can legitimately be 0 until the OTA handle learns the real
+    // Content-Length (Gitee's API carries no asset size) — guard the division
+    // so the first frame doesn't render a garbage percent like INT_MAX.
+    const size_t total = updater.getTotalSize();
+    updaterProgress = total > 0 ? static_cast<float>(updater.getProcessedSize()) / static_cast<float>(total) : 0.0f;
     // Only update every 2% at the most
     if (static_cast<int>(updaterProgress * 50) == lastUpdaterPercentage / 2) {
       return;
@@ -124,9 +128,12 @@ void OtaUpdateActivity::render(RenderLock&&) {
     // Percent label is drawn by BaseTheme::drawProgressBar; this slot is left intentionally empty
     // so the bytes line below stays at the same Y it was at when the activity drew its own percent.
     y += height + metrics.verticalSpacing;
+    // "?" while the total is still unknown (headers not yet read).
     renderer.drawCenteredText(
         UI_10_FONT_ID, y,
-        (std::to_string(updater.getProcessedSize()) + " / " + std::to_string(updater.getTotalSize())).c_str());
+        (std::to_string(updater.getProcessedSize()) + " / " +
+         (updater.getTotalSize() > 0 ? std::to_string(updater.getTotalSize()) : "?"))
+            .c_str());
   } else if (state == NO_UPDATE) {
     renderer.drawCenteredText(UI_10_FONT_ID, top, tr(STR_NO_UPDATE), true, EpdFontFamily::BOLD);
     const auto labels = mappedInput.mapLabels(tr(STR_BACK), "", "", "");
